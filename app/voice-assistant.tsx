@@ -33,7 +33,7 @@ type VoiceProps = {
   onBanner: (message: string) => void;
 };
 
-const commandKeys = ["home", "create", "matches", "ledger", "safety"] as const;
+const commandKeys = ["home", "create", "matches", "ledger", "safety", "market", "help", "faq"] as const;
 
 export function GlobalVoiceAssistant(props: VoiceProps) {
   const [open, setOpen] = useState(false);
@@ -42,7 +42,7 @@ export function GlobalVoiceAssistant(props: VoiceProps) {
   const tr = translations[props.language];
   const currentScreen = props.role === "collector" ? tr[props.collectorView] : tr[props.recyclerView];
   const screenMessage = `${voicePromptParts[props.language].before} ${currentScreen} ${voicePromptParts[props.language].after}`;
-  const quickCommands = useMemo(() => props.role === "collector" ? [tr.home, tr.create, tr.matches, tr.ledger, tr.safety, `${tr.recycler} dashboard`] : [tr.lots, tr.handover, tr.history, `${tr.collector} app`], [props.role, tr]);
+  const quickCommands = useMemo(() => props.role === "collector" ? [tr.home, tr.create, tr.matches, tr.ledger, tr.safety, tr.market, tr.help, tr.faq, `${tr.recycler} dashboard`] : [tr.lots, tr.handover, tr.history, `${tr.collector} app`], [props.role, tr]);
 
   const valuesFor = (key: keyof (typeof translations)[Language]) => Object.values(translations).map((copy) => String(copy[key]).toLocaleLowerCase());
   const hasAny = (text: string, values: string[]) => values.some((value) => text.includes(value));
