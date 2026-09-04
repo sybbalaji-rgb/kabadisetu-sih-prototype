@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KabadiSetu SIH Prototype",
+  title: "KabadiSetu | Formal E-Waste Network",
   description:
-    "An offline-friendly digital bridge between informal e-waste collectors and verified recyclers.",
+    "A multilingual digital bridge connecting e-waste collectors, verified recyclers and JNARDDC oversight.",
   manifest: "/manifest.webmanifest",
   applicationName: "KabadiSetu",
   appleWebApp: {
@@ -16,6 +16,9 @@ export const metadata: Metadata = {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
     apple: "/icons/apple-touch-icon.png",
+  },
+  other: {
+    "codex-preview": "development",
   },
 };
 

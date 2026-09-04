@@ -1,14 +1,14 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Factory, Headphones, Languages, Recycle, ShieldCheck, UserRound } from "lucide-react";
+import { Factory, Headphones, Languages, Landmark, Recycle, ShieldCheck, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Language, Role, voiceLocales } from "./kabadi-data";
 
-type DemoSession = { role: Role; displayName: string };
+export type LoginRequest = { role: Role; displayName: string; contact: string; authorizationId?: string; serviceArea?: string };
 
 const languages: { value: Language; label: string }[] = [
   { value: "en", label: "English" }, { value: "hi", label: "हिन्दी" },
@@ -26,34 +26,24 @@ export function RoleLogin({
 }: {
   language: Language;
   onLanguage: (language: Language) => void;
-  onLogin: (session: DemoSession) => void;
+  onLogin: (session: LoginRequest) => void;
 }) {
   const [role, setRole] = useState<Role>("collector");
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [authorizationId, setAuthorizationId] = useState("");
+  const [serviceArea, setServiceArea] = useState("");
   const [error, setError] = useState("");
-
-  const fillDemo = () => {
-    setError("");
-    if (role === "collector") {
-      setName("Ravi");
-      setContact("98765 43210");
-      setAuthorizationId("");
-    } else {
-      setName("GreenLoop E-Waste");
-      setContact("greenloop@example.com");
-      setAuthorizationId("RECY-MH-2026-014");
-    }
-  };
 
   const speak = () => {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const message = new SpeechSynthesisUtterance(
       role === "collector"
-        ? "Collector login selected. Enter your name and mobile number, or use the demo details."
-        : "Recycler login selected. Enter the organisation details and authorization ID, or use the demo details.",
+        ? "Collector sign in selected. Enter your name, mobile number and collection area."
+        : role === "recycler"
+          ? "Recycler sign in selected. Enter the organisation, service area and authorization ID."
+          : "JNARDDC command center selected. Enter the authorized access details.",
     );
     message.lang = voiceLocales[language];
     message.rate = 0.9;
@@ -63,8 +53,9 @@ export function RoleLogin({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!name.trim() || !contact.trim()) return setError("Please enter the required details.");
-    if (role === "recycler" && !authorizationId.trim()) return setError("Recycler authorization ID is required.");
-    onLogin({ role, displayName: name.trim() });
+    if (role !== "collector" && !authorizationId.trim()) return setError(role === "recycler" ? "Recycler authorization ID is required." : "Command-center access code is required.");
+    if (role !== "authority" && !serviceArea.trim()) return setError("Service area is required.");
+    onLogin({ role, displayName: name.trim(), contact: contact.trim(), authorizationId: authorizationId.trim() || undefined, serviceArea: serviceArea.trim() || undefined });
   };
 
   return (
@@ -84,9 +75,9 @@ export function RoleLogin({
         <div className="relative overflow-hidden bg-[#173d30] p-7 text-white sm:p-10 lg:p-12">
           <div className="absolute -right-24 -top-20 size-64 rounded-full border-[38px] border-white/5" />
           <div className="relative">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e9ff9d]">SIH working prototype</p>
-            <h2 className="mt-4 max-w-lg text-4xl font-black leading-[1.05] tracking-[-0.05em] sm:text-5xl">One bridge. Two focused workspaces.</h2>
-            <p className="mt-5 max-w-md text-base leading-7 text-white/70">Collectors create and compare lots. Authorized recyclers accept, verify and complete traceable handovers.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#e9ff9d]">E-waste exchange platform</p>
+            <h2 className="mt-4 max-w-lg text-4xl font-black leading-[1.05] tracking-[-0.05em] sm:text-5xl">One bridge. Three connected workspaces.</h2>
+            <p className="mt-5 max-w-md text-base leading-7 text-white/70">Collectors publish lots, verified recyclers complete handovers, and JNARDDC monitors the formal recycling flow.</p>
             <div className="mt-8 space-y-3 text-sm">
               <div className="flex items-center gap-3 rounded-2xl bg-white/8 px-4 py-3"><ShieldCheck className="size-5 text-[#e9ff9d]" /> FairLock protects an accepted rate</div>
               <div className="flex items-center gap-3 rounded-2xl bg-white/8 px-4 py-3"><Headphones className="size-5 text-[#e9ff9d]" /> Voice guidance in 12 Indian languages</div>
@@ -101,28 +92,33 @@ export function RoleLogin({
           </div>
 
           <Tabs value={role} onValueChange={(value) => { setRole(value as Role); setError(""); }} className="mt-7">
-            <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-[#e4e9df] p-1.5">
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-2 bg-[#e4e9df] p-1.5">
               <TabsTrigger value="collector" className="h-14 rounded-xl"><UserRound /> Collector</TabsTrigger>
               <TabsTrigger value="recycler" className="h-14 rounded-xl"><Factory /> Recycler</TabsTrigger>
+              <TabsTrigger value="authority" className="h-14 rounded-xl"><Landmark /> JNARDDC</TabsTrigger>
             </TabsList>
 
             <form onSubmit={submit} className="mt-6">
               <TabsContent value="collector" className="space-y-4">
                 <LoginField label="Collector name"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Example: Ravi" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
                 <LoginField label="Mobile number"><Input value={contact} onChange={(event) => setContact(event.target.value)} inputMode="tel" placeholder="10-digit mobile number" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
+                <LoginField label="Collection area"><Input value={serviceArea} onChange={(event) => setServiceArea(event.target.value)} placeholder="Example: Bhosari, Pune" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
               </TabsContent>
               <TabsContent value="recycler" className="space-y-4">
                 <LoginField label="Recycler organisation"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Registered organisation name" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
                 <LoginField label="Official email or mobile"><Input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Contact used for verification" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
                 <LoginField label="Authorization ID"><Input value={authorizationId} onChange={(event) => setAuthorizationId(event.target.value)} placeholder="CPCB / SPCB authorization ID" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
+                <LoginField label="Service area"><Input value={serviceArea} onChange={(event) => setServiceArea(event.target.value)} placeholder="District or city served" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
+              </TabsContent>
+              <TabsContent value="authority" className="space-y-4">
+                <LoginField label="Officer / team name"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="JNARDDC monitoring team" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
+                <LoginField label="Official email"><Input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="Official contact" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
+                <LoginField label="Command-center access code"><Input value={authorizationId} onChange={(event) => setAuthorizationId(event.target.value)} type="password" placeholder="Authorized access code" className="h-12 rounded-xl border-[#cbd5c5] bg-white" /></LoginField>
               </TabsContent>
 
               {error && <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">{error}</p>}
-              <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto]">
-                <Button type="submit" size="lg" className="h-12 rounded-xl bg-[#173d30]">Continue as {role === "collector" ? "Collector" : "Recycler"}</Button>
-                <Button type="button" size="lg" variant="outline" className="h-12 rounded-xl border-[#b8c8b3] bg-[#eef7d5]" onClick={fillDemo}>Use demo details</Button>
-              </div>
-              <p className="mt-4 text-xs leading-5 text-[#718078]">Prototype sign-in only. No password or personal details are sent to a server.</p>
+              <Button type="submit" size="lg" className="mt-6 h-12 w-full rounded-xl bg-[#173d30]">Continue to {role === "collector" ? "Collector App" : role === "recycler" ? "Recycler Workspace" : "Command Center"}</Button>
+              <p className="mt-4 text-xs leading-5 text-[#718078]">Your workspace data is stored on the KabadiSetu platform so approved participants can continue across devices.</p>
             </form>
           </Tabs>
         </div>
