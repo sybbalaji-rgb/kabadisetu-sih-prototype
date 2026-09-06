@@ -97,7 +97,102 @@ function asLot(row: Record<string, unknown>) {
    D1 implementation (original Cloudflare path)
    ═══════════════════════════════════════════════════════════════════════════════ */
 
+let d1TablesReady = false;
+
+async function ensureD1Tables(db: D1Database) {
+  if (d1TablesReady) return;
+  try {
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS cluster_members (
+        lot_id TEXT PRIMARY KEY NOT NULL,
+        cluster_id TEXT NOT NULL,
+        joined_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS lots (
+        id TEXT PRIMARY KEY NOT NULL,
+        collector_id TEXT NOT NULL,
+        material TEXT NOT NULL,
+        weight REAL NOT NULL,
+        condition TEXT NOT NULL,
+        location TEXT NOT NULL,
+        image_key TEXT,
+        image_name TEXT NOT NULL,
+        ai_confidence REAL,
+        estimated_min REAL NOT NULL,
+        estimated_max REAL NOT NULL,
+        status TEXT NOT NULL,
+        cluster_id TEXT,
+        recycler_id TEXT,
+        locked_rate REAL,
+        fairlock_id TEXT,
+        valid_until TEXT,
+        pickup_date TEXT,
+        final_weight REAL,
+        final_rate REAL,
+        payment_status TEXT,
+        handover_code TEXT,
+        passport_id TEXT,
+        completed_at TEXT,
+        price_change_reason TEXT,
+        recycler_rating INTEGER,
+        recycler_review TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS material_prices (
+        material TEXT PRIMARY KEY NOT NULL,
+        low_rate REAL NOT NULL,
+        high_rate REAL NOT NULL,
+        source TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS passport_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        passport_id TEXT NOT NULL,
+        lot_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        actor_id TEXT NOT NULL,
+        details TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS price_history (
+        id TEXT PRIMARY KEY NOT NULL,
+        material TEXT NOT NULL,
+        low_rate REAL NOT NULL,
+        high_rate REAL NOT NULL,
+        source TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS profiles (
+        id TEXT PRIMARY KEY NOT NULL,
+        role TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        contact TEXT NOT NULL,
+        authorization_id TEXT,
+        service_area TEXT DEFAULT '' NOT NULL,
+        verified INTEGER DEFAULT 0 NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS support_records (
+        id TEXT PRIMARY KEY NOT NULL,
+        profile_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        rating INTEGER,
+        contact TEXT,
+        message TEXT NOT NULL,
+        status TEXT DEFAULT 'open' NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+    d1TablesReady = true;
+  } catch (err) {
+    console.warn("ensureD1Tables failed:", err);
+  }
+}
+
 async function seedPricesD1(db: D1Database) {
+  await ensureD1Tables(db);
   const now = new Date().toISOString();
   await db.batch(Object.entries(DEFAULT_PRICES).map(([material, [low, high]]) => db.prepare(
     `INSERT OR IGNORE INTO material_prices (material, low_rate, high_rate, source, updated_at) VALUES (?, ?, ?, 'JNARDDC reference baseline', ?)`,
@@ -463,7 +558,14 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const profileId = requiredText(url.searchParams.get("profileId"), "Profile ID", 80);
     const db = await tryGetD1();
-    if (db) return await handleGetD1(db, profileId);
+    if (db) {
+      try {
+        return await handleGetD1(db, profileId);
+      } catch (err) {
+        console.warn("D1 GET failed, falling back to memory store:", err);
+        return handleGetMem(profileId);
+      }
+    }
     return handleGetMem(profileId);
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : "Unable to load platform data" }, 400);
@@ -474,7 +576,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as Record<string, unknown>;
     const db = await tryGetD1();
-    if (db) return await handlePostD1(db, body);
+    if (db) {
+      try {
+        return await handlePostD1(db, body);
+      } catch (err) {
+        console.warn("D1 POST failed, falling back to memory store:", err);
+        return await handlePostMem(body);
+      }
+    }
     return await handlePostMem(body);
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : "Request failed" }, 400);
