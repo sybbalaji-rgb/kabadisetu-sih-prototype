@@ -41,7 +41,12 @@ function getMaterialLabel(key: MaterialKey, t: (k: string) => string): string {
 
 async function requestApi(body: Record<string, unknown>) {
   const result = await fetch("/api/platform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await result.json() as Record<string, unknown>;
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await result.json()) as Record<string, unknown>;
+  } catch {
+    throw new Error("Unable to connect to the platform server. Please try again.");
+  }
   if (!result.ok) throw new Error(String(data.error ?? "Request failed"));
   return data;
 }
@@ -78,14 +83,37 @@ export function KabadiApp() {
     if (!quiet) setLoading(true);
     try {
       const response = await fetch(`/api/platform?profileId=${encodeURIComponent(session.id)}`, { cache: "no-store" });
-      const payload = await response.json() as Snapshot & { error?: string; profile?: Session };
-      if (!response.ok) throw new Error(payload.error ?? "Unable to sync");
+      let payload: Snapshot & { error?: string; profile?: Session };
+      try {
+        payload = (await response.json()) as Snapshot & { error?: string; profile?: Session };
+      } catch {
+        if (!quiet) setBanner("Connecting to platform...");
+        return;
+      }
+      if (!response.ok) {
+        if (payload.error?.includes("Account not found")) {
+          window.localStorage.removeItem("kabadisetu-account-v2");
+          setSession(null);
+          setBanner("Session updated. Please choose your workspace to continue.");
+          return;
+        }
+        throw new Error(payload.error ?? "Unable to sync");
+      }
       setData(payload);
       if (payload.profile) {
         const next = { ...session, ...payload.profile };
         setSession(next); window.localStorage.setItem("kabadisetu-account-v2", JSON.stringify(next));
       }
-    } catch (error) { if (!quiet) setBanner(error instanceof Error ? error.message : "Unable to sync"); }
+    } catch (error) {
+      if (!quiet) {
+        const msg = error instanceof Error ? error.message : "Unable to sync";
+        if (msg.includes("<!DOCTYPE") || msg.includes("Unexpected token")) {
+          setBanner("Synchronizing with platform...");
+        } else {
+          setBanner(msg);
+        }
+      }
+    }
     finally { if (!quiet) setLoading(false); }
   }, [session]);
 
