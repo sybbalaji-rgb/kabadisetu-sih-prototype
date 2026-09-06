@@ -4,6 +4,31 @@ type ScanEnv = {
   GEMINI_MODEL?: string;
 };
 
+import fs from "node:fs";
+import path from "node:path";
+
+function readEnvFile(): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (typeof process === "undefined" || !process.cwd) return result;
+  for (const file of [".env.local", ".env"]) {
+    try {
+      const fullPath = path.resolve(process.cwd(), file);
+      if (fs.existsSync(fullPath)) {
+        const content = fs.readFileSync(fullPath, "utf-8");
+        for (const line of content.split("\n")) {
+          const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)?\s*$/);
+          if (match && !result[match[1]]) {
+            result[match[1]] = match[2].trim().replace(/^['"](.*)['"]$/, "$1");
+          }
+        }
+      }
+    } catch {
+      // Ignored
+    }
+  }
+  return result;
+}
+
 async function getScanEnv(): Promise<ScanEnv> {
   let cfEnv: ScanEnv | undefined;
   try {
@@ -13,17 +38,22 @@ async function getScanEnv(): Promise<ScanEnv> {
     // Cloudflare Workers module not available in Node / Antigravity / Next runtime
   }
 
+  const fileEnv = readEnvFile();
+
   return {
     BUCKET: cfEnv?.BUCKET,
     GEMINI_API_KEY:
       cfEnv?.GEMINI_API_KEY ||
       process.env.GEMINI_API_KEY ||
+      fileEnv.GEMINI_API_KEY ||
       process.env.VITE_GEMINI_API_KEY ||
+      fileEnv.VITE_GEMINI_API_KEY ||
       process.env.NEXT_PUBLIC_GEMINI_API_KEY,
     GEMINI_MODEL:
       cfEnv?.GEMINI_MODEL ||
       process.env.GEMINI_MODEL ||
-      "gemini-2.5-flash",
+      fileEnv.GEMINI_MODEL ||
+      "gemini-flash-latest",
   };
 }
 
