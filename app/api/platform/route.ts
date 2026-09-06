@@ -188,6 +188,27 @@ async function handlePostD1(db: D1Database, body: Record<string, unknown>) {
     return jsonResponse({ lot: asLot(row!) }, 201);
   }
 
+  if (action === "verifyRecycler") {
+    if (role !== "authority") throw new Error("Command-center access is required");
+    const recyclerId = requiredText(body.recyclerId, "Recycler ID", 80);
+    await db.prepare("UPDATE profiles SET verified = ? WHERE id = ? AND role = 'recycler'").bind(body.verified ? 1 : 0, recyclerId).run();
+    return jsonResponse({ ok: true });
+  }
+
+  if (action === "updatePrice") {
+    if (role !== "authority") throw new Error("Command-center access is required");
+    const material = requiredText(body.material, "Material", 30);
+    const low = Number(body.low);
+    const high = Number(body.high);
+    const source = requiredText(body.source, "Price source", 180);
+    if (!MATERIALS.includes(material as typeof MATERIALS[number]) || !Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high < low) throw new Error("Enter a valid material price range");
+    await db.batch([
+      db.prepare("UPDATE material_prices SET low_rate = ?, high_rate = ?, source = ?, updated_by = ?, updated_at = ? WHERE material = ?").bind(low, high, source, profileId, now, material),
+      db.prepare("INSERT INTO price_history (id, material, low_rate, high_rate, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(genId("PRC"), material, low, high, source, now),
+    ]);
+    return jsonResponse({ ok: true });
+  }
+
   const lotId = requiredText(body.lotId, "Lot ID", 80);
   const lot = await db.prepare("SELECT * FROM lots WHERE id = ?").bind(lotId).first<Record<string, unknown>>();
   if (!lot) throw new Error("Lot not found");
@@ -253,27 +274,6 @@ async function handlePostD1(db: D1Database, body: Record<string, unknown>) {
     await db.prepare("UPDATE lots SET recycler_rating = ?, recycler_review = ?, updated_at = ? WHERE id = ?").bind(rating, String(body.review ?? "").trim().slice(0, 500), now, lotId).run();
     const updated = await db.prepare("SELECT * FROM lots WHERE id = ?").bind(lotId).first<Record<string, unknown>>();
     return jsonResponse({ lot: asLot(updated!) });
-  }
-
-  if (action === "verifyRecycler") {
-    if (role !== "authority") throw new Error("Command-center access is required");
-    const recyclerId = requiredText(body.recyclerId, "Recycler ID", 80);
-    await db.prepare("UPDATE profiles SET verified = ? WHERE id = ? AND role = 'recycler'").bind(body.verified ? 1 : 0, recyclerId).run();
-    return jsonResponse({ ok: true });
-  }
-
-  if (action === "updatePrice") {
-    if (role !== "authority") throw new Error("Command-center access is required");
-    const material = requiredText(body.material, "Material", 30);
-    const low = Number(body.low);
-    const high = Number(body.high);
-    const source = requiredText(body.source, "Price source", 180);
-    if (!MATERIALS.includes(material as typeof MATERIALS[number]) || !Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high < low) throw new Error("Enter a valid material price range");
-    await db.batch([
-      db.prepare("UPDATE material_prices SET low_rate = ?, high_rate = ?, source = ?, updated_by = ?, updated_at = ? WHERE material = ?").bind(low, high, source, profileId, now, material),
-      db.prepare("INSERT INTO price_history (id, material, low_rate, high_rate, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)").bind(genId("PRC"), material, low, high, source, now),
-    ]);
-    return jsonResponse({ ok: true });
   }
 
   throw new Error("Unsupported action");
@@ -374,6 +374,27 @@ async function handlePostMem(body: Record<string, unknown>) {
     return jsonResponse({ lot: asLot(newLot) }, 201);
   }
 
+  if (action === "verifyRecycler") {
+    if (role !== "authority") throw new Error("Command-center access is required");
+    const recyclerId = requiredText(body.recyclerId, "Recycler ID", 80);
+    const target = mem.profiles.find((p) => p.id === recyclerId && p.role === "recycler");
+    if (target) target.verified = body.verified ? 1 : 0;
+    return jsonResponse({ ok: true });
+  }
+
+  if (action === "updatePrice") {
+    if (role !== "authority") throw new Error("Command-center access is required");
+    const material = requiredText(body.material, "Material", 30);
+    const low = Number(body.low);
+    const high = Number(body.high);
+    const source = requiredText(body.source, "Price source", 180);
+    if (!MATERIALS.includes(material as typeof MATERIALS[number]) || !Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high < low) throw new Error("Enter a valid material price range");
+    const existing = mem.prices.find((p) => p.material === material);
+    if (existing) { existing.low_rate = low; existing.high_rate = high; existing.source = source; existing.updated_by = profileId; existing.updated_at = now; }
+    mem.priceHistory.unshift({ id: genId("PRC"), material, low_rate: low, high_rate: high, source, updated_at: now });
+    return jsonResponse({ ok: true });
+  }
+
   const lotId = requiredText(body.lotId, "Lot ID", 80);
   const lot = mem.lots.find((l) => l.id === lotId);
   if (!lot) throw new Error("Lot not found");
@@ -428,27 +449,6 @@ async function handlePostMem(body: Record<string, unknown>) {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error("Choose a rating from 1 to 5");
     lot.recycler_rating = rating; lot.recycler_review = String(body.review ?? "").trim().slice(0, 500); lot.updated_at = now;
     return jsonResponse({ lot: asLot(lot) });
-  }
-
-  if (action === "verifyRecycler") {
-    if (role !== "authority") throw new Error("Command-center access is required");
-    const recyclerId = requiredText(body.recyclerId, "Recycler ID", 80);
-    const target = mem.profiles.find((p) => p.id === recyclerId && p.role === "recycler");
-    if (target) target.verified = body.verified ? 1 : 0;
-    return jsonResponse({ ok: true });
-  }
-
-  if (action === "updatePrice") {
-    if (role !== "authority") throw new Error("Command-center access is required");
-    const material = requiredText(body.material, "Material", 30);
-    const low = Number(body.low);
-    const high = Number(body.high);
-    const source = requiredText(body.source, "Price source", 180);
-    if (!MATERIALS.includes(material as typeof MATERIALS[number]) || !Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high < low) throw new Error("Enter a valid material price range");
-    const existing = mem.prices.find((p) => p.material === material);
-    if (existing) { existing.low_rate = low; existing.high_rate = high; existing.source = source; existing.updated_by = profileId; existing.updated_at = now; }
-    mem.priceHistory.unshift({ id: genId("PRC"), material, low_rate: low, high_rate: high, source, updated_at: now });
-    return jsonResponse({ ok: true });
   }
 
   throw new Error("Unsupported action");
