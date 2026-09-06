@@ -1,6 +1,6 @@
 import { ChartCandlestick, CircleHelp, Handshake, Home, LifeBuoy, Plus, ShieldAlert, WalletCards } from "lucide-react";
 
-export type Role = "collector" | "recycler";
+export type Role = "collector" | "recycler" | "authority";
 export type CollectorView = "home" | "create" | "matches" | "ledger" | "safety" | "market" | "help" | "faq";
 export type RecyclerView = "lots" | "handover" | "history";
 export type Language = "en" | "hi" | "mr" | "ta" | "te" | "kn" | "ml" | "bn" | "gu" | "pa" | "or" | "as";
@@ -9,6 +9,7 @@ export type LotStatus = "available" | "offline" | "locked" | "scheduled" | "comp
 
 export type Lot = {
   id: string;
+  collectorId?: string;
   material: MaterialKey;
   weight: number;
   condition: string;
@@ -19,8 +20,10 @@ export type Lot = {
   status: LotStatus;
   syncStatus: "synced" | "pending";
   imageName: string;
+  imageKey?: string;
   aiConfidence: number;
   clusterJoined?: boolean;
+  clusterId?: string;
   selectedRecyclerId?: string;
   lockedRate?: number;
   fairLockId?: string;
@@ -30,6 +33,7 @@ export type Lot = {
   finalRate?: number;
   paymentStatus?: "paid" | "pending" | "partial";
   handoverCode?: string;
+  passportId?: string;
   completedAt?: string;
   priceChangeReason?: string;
   recyclerRating?: number;

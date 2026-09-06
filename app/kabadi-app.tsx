@@ -1,205 +1,308 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
-  Factory, Languages, LogOut, Recycle, RefreshCw, RotateCcw, UserRound, Wifi, WifiOff,
+  AlertTriangle, AudioLines, BarChart3, Boxes, Camera, CheckCircle2,
+  FileCheck2, Headphones, Languages, Landmark, Leaf, LockKeyhole,
+  LogOut, MapPin, Mic2, PackageCheck, Recycle, RefreshCw, Scale, ShieldCheck,
+  Star, Truck, UploadCloud, UserRound, UsersRound, WalletCards,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { CollectorWorkspace } from "./collector-app";
-import { RecyclerDashboard } from "./recycler-dashboard";
-import { GlobalVoiceAssistant } from "./voice-assistant";
-import { PWAInstallButton } from "./pwa-install";
-import { RoleLogin } from "./role-login";
 import { LanguageRuntime } from "./language-runtime";
-import {
-  CollectorView, Language, Lot, RecyclerView, Role, navItems, seedLots, translations, voiceLocales,
-} from "./kabadi-data";
+import { PWAInstallButton } from "./pwa-install";
+import { RatingStars } from "./rating-stars";
+import { RoleLogin, LoginRequest } from "./role-login";
+import { Language, Lot, MaterialKey, Role, formatDate, materials, money, translations, voiceLocales } from "./kabadi-data";
+
+type Session = LoginRequest & { id: string; verified: boolean };
+type RecyclerProfile = { id: string; name: string; serviceArea: string; authorizationId?: string; verified: boolean };
+type Price = { material: MaterialKey; low: number; high: number; source: string; updatedAt: string };
+type Cluster = { cluster_id: string; material: MaterialKey; location: string; lot_count: number; total_weight: number };
+type SupportRecord = { id: string; kind: string; rating?: number; message: string; status: string; created_at: string };
+type Snapshot = {
+  lots: Lot[]; recyclers: RecyclerProfile[]; prices: Price[]; priceHistory: Record<string, unknown>[];
+  clusters: Cluster[]; support: SupportRecord[];
+  metrics: { total_lots?: number; total_kg?: number; completed?: number; clustered?: number };
+};
+type View = "home" | "create" | "lots" | "market" | "safety" | "help" | "handover" | "history" | "command";
+
+const blankSnapshot: Snapshot = { lots: [], recyclers: [], prices: [], priceHistory: [], clusters: [], support: [], metrics: {} };
+const languageOptions: { value: Language; label: string }[] = [
+  { value: "en", label: "English" }, { value: "hi", label: "हिन्दी" }, { value: "mr", label: "मराठी" },
+  { value: "ta", label: "தமிழ்" }, { value: "te", label: "తెలుగు" }, { value: "kn", label: "ಕನ್ನಡ" },
+  { value: "ml", label: "മലയാളം" }, { value: "bn", label: "বাংলা" }, { value: "gu", label: "ગુજરાતી" },
+  { value: "pa", label: "ਪੰਜਾਬੀ" }, { value: "or", label: "ଓଡ଼ିଆ" }, { value: "as", label: "অসমীয়া" },
+];
+
+async function requestApi(body: Record<string, unknown>) {
+  const result = await fetch("/api/platform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await result.json() as Record<string, unknown>;
+  if (!result.ok) throw new Error(String(data.error ?? "Request failed"));
+  return data;
+}
 
 export function KabadiApp() {
-  const [role, setRole] = useState<Role>("collector");
-  const [session, setSession] = useState<{ role: Role; displayName: string } | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [language, setLanguage] = useState<Language>("en");
-  const [collectorView, setCollectorView] = useState<CollectorView>("home");
-  const [recyclerView, setRecyclerView] = useState<RecyclerView>("lots");
-  const [offlineMode, setOfflineMode] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-  const [lots, setLots] = useState<Lot[]>(seedLots);
+  const [view, setView] = useState<View>("home");
+  const [data, setData] = useState<Snapshot>(blankSnapshot);
   const [hydrated, setHydrated] = useState(false);
-  const [activeLotId, setActiveLotId] = useState("LOT-2381");
+  const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState("");
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("kabadisetu-demo-v1");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as { lots: Lot[]; language: Language };
-        if (parsed.lots?.length) setLots(parsed.lots);
-        if (parsed.language) setLanguage(parsed.language);
-      } catch {
-        window.localStorage.removeItem("kabadisetu-demo-v1");
-      }
-    }
-    const savedSession = window.localStorage.getItem("kabadisetu-session-v1");
-    if (savedSession) {
-      try {
-        const parsed = JSON.parse(savedSession) as { role: Role; displayName: string };
-        if ((parsed.role === "collector" || parsed.role === "recycler") && parsed.displayName) {
-          setSession(parsed);
-          setRole(parsed.role);
-        }
-      } catch {
-        window.localStorage.removeItem("kabadisetu-session-v1");
-      }
-    }
+    const saved = window.localStorage.getItem("kabadisetu-account-v2");
+    const savedLanguage = window.localStorage.getItem("kabadisetu-language") as Language | null;
+    if (savedLanguage) setLanguage(savedLanguage);
+    if (saved) try { setSession(JSON.parse(saved) as Session); } catch { window.localStorage.removeItem("kabadisetu-account-v2"); }
     setHydrated(true);
   }, []);
 
-  useEffect(() => {
-    const updateConnection = () => setIsOnline(window.navigator.onLine);
-    updateConnection();
-    window.addEventListener("online", updateConnection);
-    window.addEventListener("offline", updateConnection);
-    return () => {
-      window.removeEventListener("online", updateConnection);
-      window.removeEventListener("offline", updateConnection);
-    };
-  }, []);
+  useEffect(() => { window.localStorage.setItem("kabadisetu-language", language); }, [language]);
+  useEffect(() => { if (!banner) return; const timer = window.setTimeout(() => setBanner(""), 4500); return () => clearTimeout(timer); }, [banner]);
+
+  const refresh = useCallback(async (quiet = false) => {
+    if (!session || !navigator.onLine) return;
+    if (!quiet) setLoading(true);
+    try {
+      const response = await fetch(`/api/platform?profileId=${encodeURIComponent(session.id)}`, { cache: "no-store" });
+      const payload = await response.json() as Snapshot & { error?: string; profile?: Session };
+      if (!response.ok) throw new Error(payload.error ?? "Unable to sync");
+      setData(payload);
+      if (payload.profile) {
+        const next = { ...session, ...payload.profile };
+        setSession(next); window.localStorage.setItem("kabadisetu-account-v2", JSON.stringify(next));
+      }
+    } catch (error) { if (!quiet) setBanner(error instanceof Error ? error.message : "Unable to sync"); }
+    finally { if (!quiet) setLoading(false); }
+  }, [session]);
 
   useEffect(() => {
-    if (hydrated) window.localStorage.setItem("kabadisetu-demo-v1", JSON.stringify({ lots, language }));
-  }, [lots, language, hydrated]);
+    if (!session) return;
+    void refresh();
+    const timer = window.setInterval(() => void refresh(true), 20000);
+    const online = () => void refresh();
+    window.addEventListener("online", online);
+    return () => { clearInterval(timer); window.removeEventListener("online", online); };
+  }, [session?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!banner) return;
-    const timer = window.setTimeout(() => setBanner(""), 3200);
-    return () => window.clearTimeout(timer);
-  }, [banner]);
-
-  const tr = translations[language];
-  const effectiveOffline = offlineMode || !isOnline;
-  const activeLot = lots.find((lot) => lot.id === activeLotId) ?? lots.find((lot) => lot.status !== "completed") ?? lots[0];
-  const paidTotal = lots.reduce((sum, lot) => lot.status === "completed" && lot.paymentStatus === "paid" ? sum + (lot.finalWeight ?? lot.weight) * (lot.finalRate ?? lot.lockedRate ?? 0) : sum, 0);
-  const pendingTotal = lots.reduce((sum, lot) => lot.status === "completed" && lot.paymentStatus !== "paid" ? sum + (lot.finalWeight ?? lot.weight) * (lot.finalRate ?? lot.lockedRate ?? 0) : sum, 0);
-
-  const resetDemo = () => {
-    setLots(seedLots); setActiveLotId("LOT-2381"); setCollectorView("home"); setRecyclerView("lots");
-    setRole(session?.role ?? "collector"); setOfflineMode(false); setBanner("Demo data reset successfully");
+  const login = async (details: LoginRequest) => {
+    setLoading(true);
+    try {
+      const payload = await requestApi({ action: "register", ...details });
+      const profile = payload.profile as Session;
+      const next = { ...details, ...profile };
+      setSession(next); window.localStorage.setItem("kabadisetu-account-v2", JSON.stringify(next));
+      setView(details.role === "authority" ? "command" : "home");
+    } catch (error) { setBanner(error instanceof Error ? error.message : "Sign in failed"); }
+    finally { setLoading(false); }
   };
 
-  const login = (nextSession: { role: Role; displayName: string }) => {
-    window.localStorage.setItem("kabadisetu-session-v1", JSON.stringify(nextSession));
-    setSession(nextSession);
-    setRole(nextSession.role);
-    setCollectorView("home");
-    setRecyclerView("lots");
+  const act = async (action: string, values: Record<string, unknown> = {}) => {
+    if (!session) throw new Error("Sign in again");
+    setLoading(true);
+    try {
+      const result = await requestApi({ action, profileId: session.id, ...values });
+      await refresh(true);
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed";
+      setBanner(message); throw error;
+    } finally { setLoading(false); }
   };
 
-  const logout = () => {
-    window.localStorage.removeItem("kabadisetu-session-v1");
-    setSession(null);
-    setRole("collector");
-    setBanner("");
+  const logout = () => { window.localStorage.removeItem("kabadisetu-account-v2"); setSession(null); setData(blankSnapshot); setView("home"); };
+  const speak = () => {
+    if (!("speechSynthesis" in window)) return setBanner("Voice guidance is not supported on this browser");
+    speechSynthesis.cancel();
+    const text = document.querySelector("[data-screen]")?.textContent?.replace(/\s+/g, " ").slice(0, 1800) || "KabadiSetu";
+    const utterance = new SpeechSynthesisUtterance(text); utterance.lang = voiceLocales[language]; utterance.rate = 0.9; speechSynthesis.speak(utterance);
   };
 
-  const switchDemoRole = (nextRole: Role, displayName: string) => {
-    const nextSession = { role: nextRole, displayName };
-    window.localStorage.setItem("kabadisetu-session-v1", JSON.stringify(nextSession));
-    setSession(nextSession);
-    setRole(nextRole);
-  };
+  if (!hydrated) return <main className="grid min-h-screen place-items-center bg-[#edf1e8]"><Recycle className="size-10 animate-pulse text-[#173d30]" /></main>;
 
-  const speak = (text: string) => {
-    if (!("speechSynthesis" in window)) return setBanner("Voice guidance is not supported in this browser");
-    window.speechSynthesis.cancel();
-    const message = new SpeechSynthesisUtterance(text);
-    message.lang = voiceLocales[language];
-    message.rate = 0.9;
-    window.speechSynthesis.speak(message);
-  };
-
-  const syncPendingLots = () => {
-    if (effectiveOffline) return setBanner("Internet connection is required before syncing");
-    setLots((current) => current.map((lot) => lot.syncStatus === "pending" ? { ...lot, syncStatus: "synced", status: lot.status === "offline" ? "available" : lot.status } : lot));
-    setBanner("Pending lots synced with the platform");
-  };
-
-  const updateLot = (updated: Lot) => {
-    setLots((current) => current.map((lot) => lot.id === updated.id ? updated : lot));
-    setActiveLotId(updated.id);
-  };
-
-  const addLot = (lot: Lot) => {
-    setLots((current) => [lot, ...current]); setActiveLotId(lot.id);
-    setCollectorView(lot.status === "offline" ? "home" : "matches");
-    setBanner(lot.status === "offline" ? "Lot saved offline — sync when connected" : "Digital lot created successfully");
-  };
-
-  if (!hydrated) {
-    return <main className="grid min-h-screen place-items-center bg-[#edf1e8] text-[#17312a]"><div className="flex items-center gap-3 font-black"><Recycle className="animate-pulse" /> Loading KabadiSetu…</div></main>;
-  }
-
-  if (!session) return <><LanguageRuntime language={language} /><RoleLogin language={language} onLanguage={setLanguage} onLogin={login} /></>;
-
-  return (
-    <><LanguageRuntime language={language} /><main className="min-h-screen bg-[#edf1e8] text-[#17312a]">
-      <header className="sticky top-0 z-40 border-b border-[#d8dfd2] bg-[#f8faf5]/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#173d30] text-[#e9ff9d] shadow-sm"><Recycle className="size-6" /></div>
-            <div className="hidden min-w-0 sm:block"><div className="flex items-center gap-2"><h1 className="truncate text-lg font-black tracking-[-0.02em]">KabadiSetu</h1><span className="hidden rounded-full bg-[#e8f2b7] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#425600] sm:inline">SIH Prototype</span></div><p className="hidden text-xs text-[#617069] sm:block">Transparent value. Verified recycling.</p></div>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-3">
-            <div className="hidden h-10 items-center gap-2 rounded-xl bg-[#e4e9df] px-3 text-sm font-bold sm:flex">{role === "collector" ? <UserRound className="size-4" /> : <Factory className="size-4" />}<span className="max-w-32 truncate">{session.displayName}</span><span className="text-xs font-medium text-[#6a7871]">· {role}</span></div>
-            <Select value={language} onValueChange={(value) => setLanguage(value as Language)}><SelectTrigger data-no-translate className="h-10 w-10 border-[#cbd5c5] bg-white sm:w-[150px]" aria-label="Choose language"><Languages className="size-4" /><span className="hidden sm:inline"><SelectValue /></span></SelectTrigger><SelectContent data-no-translate><SelectItem value="en">English</SelectItem><SelectItem value="hi">हिन्दी</SelectItem><SelectItem value="mr">मराठी</SelectItem><SelectItem value="ta">தமிழ்</SelectItem><SelectItem value="te">తెలుగు</SelectItem><SelectItem value="kn">ಕನ್ನಡ</SelectItem><SelectItem value="ml">മലയാളം</SelectItem><SelectItem value="bn">বাংলা</SelectItem><SelectItem value="gu">ગુજરાતી</SelectItem><SelectItem value="pa">ਪੰਜਾਬੀ</SelectItem><SelectItem value="or">ଓଡ଼ିଆ</SelectItem><SelectItem value="as">অসমীয়া</SelectItem></SelectContent></Select>
-            <PWAInstallButton />
-            <Button variant="outline" size="icon" className="hidden border-[#cbd5c5] bg-white sm:inline-flex" onClick={resetDemo} aria-label="Reset demo"><RotateCcw /></Button>
-            <Button variant="outline" size="icon" className="border-[#cbd5c5] bg-white" onClick={logout} aria-label="Switch account"><LogOut /></Button>
-          </div>
-        </div>
-      </header>
-
-      {banner && <div className="fixed left-1/2 top-20 z-50 -translate-x-1/2 rounded-full bg-[#173d30] px-5 py-3 text-sm font-semibold text-white shadow-xl" role="status">{banner}</div>}
-
-      {role === "collector" ? (
-        <div className="mx-auto flex max-w-[1500px] gap-6 px-4 pb-28 pt-5 sm:px-6 lg:pb-8">
-          <aside className="hidden w-60 shrink-0 lg:block">
-            <div className="sticky top-24 space-y-4">
-              <nav className="rounded-[28px] border border-[#d6ded1] bg-[#f9fbf7] p-3 shadow-sm">
-                <p className="px-3 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#78877f]">Collector app</p>
-                {navItems.map(({ key, icon: Icon, translation }) => <Button key={key} variant="ghost" className={`mb-1 h-11 w-full justify-start rounded-xl px-3 ${collectorView === key ? "bg-[#173d30] text-white hover:bg-[#173d30] hover:text-white" : "text-[#506159]"}`} onClick={() => setCollectorView(key)}><Icon /> {tr[translation]}</Button>)}
-              </nav>
-              <div className="rounded-[28px] bg-[#173d30] p-5 text-white shadow-sm">
-                <div className="mb-4 flex items-start justify-between"><div className="grid size-10 place-items-center rounded-xl bg-white/10 text-[#e9ff9d]">{effectiveOffline ? <WifiOff /> : <Wifi />}</div><Switch checked={effectiveOffline} onCheckedChange={setOfflineMode} disabled={!isOnline} aria-label="Toggle offline demo" /></div>
-                <p className="font-bold">{!isOnline ? "Offline — device mode" : offlineMode ? "Offline demo on" : "Connected"}</p><p className="mt-1 text-xs leading-5 text-white/65">{effectiveOffline ? "New lots stay safely on this device." : "Prices and recycler offers are current demo data."}</p>
-                {lots.some((lot) => lot.syncStatus === "pending") && <Button size="sm" className="mt-4 w-full bg-[#e9ff9d] text-[#173d30] hover:bg-[#dff28b]" onClick={syncPendingLots}><RefreshCw /> Sync now</Button>}
-              </div>
-            </div>
-          </aside>
-          <section className="min-w-0 flex-1">
-            {effectiveOffline && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"><WifiOff className="size-4 shrink-0" /> {!isOnline ? "No internet: the installed app and lot creation work offline; live offers will sync later." : "Offline demo: lot creation works; live offers need a later sync."}</div>}
-            <CollectorWorkspace view={collectorView} setView={setCollectorView} language={language} lots={lots} activeLot={activeLot} paidTotal={paidTotal} pendingTotal={pendingTotal} offlineMode={effectiveOffline} onAdd={addLot} onUpdate={updateLot} onSelectLot={setActiveLotId} onBanner={setBanner} onSpeak={speak} onRecyclerDemo={() => { switchDemoRole("recycler", "GreenLoop E-Waste"); setRecyclerView("handover"); }} />
+  return <><LanguageRuntime language={language} />
+    {!session ? <RoleLogin language={language} onLanguage={setLanguage} onLogin={(details) => void login(details)} /> :
+      <main className="min-h-screen bg-[#edf1e8] pb-24 text-[#17312a] lg:pb-8">
+        <Header session={session} language={language} onLanguage={setLanguage} onRefresh={() => void refresh()} onLogout={logout} loading={loading} />
+        {banner && <div className="fixed left-1/2 top-20 z-[70] w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-[#173d30] px-5 py-3 text-center text-sm font-bold text-white shadow-xl" role="status">{banner}</div>}
+        <div className="mx-auto flex max-w-[1500px] gap-5 px-4 py-5 sm:px-6">
+          <Navigation role={session.role} view={view} onView={setView} />
+          <section className="min-w-0 flex-1" data-screen>
+            {session.role === "collector" && <CollectorArea session={session} view={view} data={data} act={act} onView={setView} onBanner={setBanner} />}
+            {session.role === "recycler" && <RecyclerArea session={session} view={view} data={data} act={act} onView={setView} />}
+            {session.role === "authority" && <AuthorityArea data={data} act={act} />}
           </section>
-          <nav className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-start overflow-x-auto rounded-2xl border border-[#d6ded1] bg-[#f9fbf7]/95 p-2 shadow-[0_10px_35px_rgba(23,61,48,0.18)] backdrop-blur lg:hidden">
-            {navItems.map(({ key, icon: Icon, translation }) => <Button key={key} variant="ghost" size="sm" className={`h-14 min-w-20 shrink-0 flex-col gap-1 rounded-xl px-2 text-xs font-bold ${collectorView === key ? "bg-[#173d30] text-white hover:bg-[#173d30] hover:text-white" : "text-[#617069]"}`} onClick={() => setCollectorView(key)}><Icon className="size-5" /> {tr[translation]}</Button>)}
-          </nav>
         </div>
-      ) : (
-        <RecyclerDashboard lots={lots} view={recyclerView} setView={setRecyclerView} onUpdate={updateLot} onBanner={setBanner} onCollectorReceipt={(lot) => { setActiveLotId(lot.id); switchDemoRole("collector", "Ravi"); setCollectorView("ledger"); }} />
-      )}
-
-      <GlobalVoiceAssistant
-        language={language}
-        role={role}
-        collectorView={collectorView}
-        recyclerView={recyclerView}
-        speak={speak}
-        onRole={setRole}
-        onCollectorView={setCollectorView}
-        onRecyclerView={setRecyclerView}
-        onBanner={setBanner}
-      />
-    </main></>
-  );
+        <MobileNavigation role={session.role} view={view} onView={setView} />
+        <VoiceDock language={language} role={session.role} onView={setView} onSpeak={speak} onBanner={setBanner} />
+      </main>}
+    {loading && <div className="fixed inset-x-0 top-0 z-[100] h-1 overflow-hidden bg-[#dce5d7]"><div className="h-full w-1/2 animate-pulse bg-[#8ab436]" /></div>}
+  </>;
 }
+
+function Header({ session, language, onLanguage, onRefresh, onLogout, loading }: { session: Session; language: Language; onLanguage: (value: Language) => void; onRefresh: () => void; onLogout: () => void; loading: boolean }) {
+  return <header className="sticky top-0 z-40 border-b border-[#d6ded1] bg-[#f8faf5]/95 backdrop-blur"><div className="mx-auto flex max-w-[1500px] items-center justify-between gap-3 px-4 py-3 sm:px-6"><div className="flex min-w-0 items-center gap-3"><span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#173d30] text-[#e9ff9d]"><Recycle /></span><div className="hidden sm:block"><h1 className="font-black">KabadiSetu</h1><p className="text-xs text-[#6b7971]">Live formal e-waste network</p></div></div><div className="flex items-center gap-2"><div className="hidden rounded-xl bg-[#e4e9df] px-3 py-2 text-sm font-bold md:block">{session.displayName} · <span className="capitalize">{session.role}</span></div><Select value={language} onValueChange={(value) => onLanguage(value as Language)}><SelectTrigger data-no-translate className="h-10 w-11 border-[#cbd5c5] bg-white sm:w-[145px]"><Languages /><span className="hidden sm:inline"><SelectValue /></span></SelectTrigger><SelectContent data-no-translate>{languageOptions.map((option) => <SelectItem value={option.value} key={option.value}>{option.label}</SelectItem>)}</SelectContent></Select><PWAInstallButton /><Button variant="outline" size="icon" className="border-[#cbd5c5] bg-white" disabled={loading} onClick={onRefresh} aria-label="Refresh data"><RefreshCw className={loading ? "animate-spin" : ""} /></Button><Button variant="outline" size="icon" className="border-[#cbd5c5] bg-white" onClick={onLogout} aria-label="Sign out"><LogOut /></Button></div></div></header>;
+}
+
+const roleNav: Record<Role, { view: View; label: string; icon: typeof Recycle }[]> = {
+  collector: [
+    { view: "home", label: "Home", icon: UserRound }, { view: "create", label: "AI Scanner", icon: Camera },
+    { view: "lots", label: "My lots", icon: Boxes }, { view: "market", label: "Fair prices", icon: BarChart3 },
+    { view: "safety", label: "Safety", icon: ShieldCheck }, { view: "help", label: "Help & FAQ", icon: Headphones },
+  ],
+  recycler: [
+    { view: "home", label: "Open lots", icon: Boxes }, { view: "handover", label: "Handovers", icon: Truck },
+    { view: "history", label: "Passports", icon: FileCheck2 }, { view: "help", label: "Help & FAQ", icon: Headphones },
+  ],
+  authority: [{ view: "command", label: "Command Center", icon: Landmark }],
+};
+
+function Navigation({ role, view, onView }: { role: Role; view: View; onView: (value: View) => void }) {
+  return <aside className="hidden w-60 shrink-0 lg:block"><nav className="sticky top-24 rounded-[28px] border border-[#d6ded1] bg-[#f9fbf7] p-3 shadow-sm"><p className="px-3 pb-2 pt-1 text-[11px] font-bold uppercase tracking-[0.18em] text-[#78877f]">{role === "authority" ? "JNARDDC" : `${role} workspace`}</p>{roleNav[role].map(({ view: item, label, icon: Icon }) => <Button key={item} variant="ghost" className={`mb-1 h-12 w-full justify-start rounded-xl ${view === item ? "bg-[#173d30] text-white hover:bg-[#173d30] hover:text-white" : "text-[#52635b]"}`} onClick={() => onView(item)}><Icon />{label}</Button>)}</nav></aside>;
+}
+
+function MobileNavigation({ role, view, onView }: { role: Role; view: View; onView: (value: View) => void }) {
+  return <nav className="fixed inset-x-3 bottom-3 z-40 flex overflow-x-auto rounded-2xl border border-[#d6ded1] bg-[#f9fbf7]/95 p-2 shadow-xl backdrop-blur lg:hidden">{roleNav[role].map(({ view: item, label, icon: Icon }) => <Button key={item} variant="ghost" className={`h-14 min-w-24 shrink-0 flex-col gap-1 rounded-xl text-xs ${view === item ? "bg-[#173d30] text-white" : "text-[#617069]"}`} onClick={() => onView(item)}><Icon />{label}</Button>)}</nav>;
+}
+
+function CollectorArea({ session, view, data, act, onView, onBanner }: { session: Session; view: View; data: Snapshot; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onView: (view: View) => void; onBanner: (message: string) => void }) {
+  if (view === "create") return <CreateLot session={session} prices={data.prices} act={act} onDone={() => onView("lots")} onBanner={onBanner} />;
+  if (view === "lots") return <CollectorLots lots={data.lots} recyclers={data.recyclers} clusters={data.clusters} act={act} />;
+  if (view === "market") return <PriceBoard prices={data.prices} history={data.priceHistory} />;
+  if (view === "safety") return <Safety />;
+  if (view === "help") return <Help profileId={session.id} act={act} />;
+  const completed = data.lots.filter((lot) => lot.status === "completed");
+  const earnings = completed.reduce((sum, lot) => sum + (lot.finalWeight ?? 0) * (lot.finalRate ?? 0), 0);
+  return <div className="space-y-5"><section className="relative overflow-hidden rounded-[34px] bg-[#173d30] p-7 text-white sm:p-10"><div className="absolute -right-16 -top-20 size-64 rounded-full border-[42px] border-[#e9ff9d]/10" /><div className="relative"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#e9ff9d]"><Leaf /> Collector workspace</div><h2 className="mt-4 text-4xl font-black sm:text-5xl">Vanakkam, {session.displayName}</h2><p className="mt-3 max-w-2xl text-white/70">Photo upload பண்ணி material identify பண்ணுங்க. Verified recycler offer, protected rate, pickup and final passport—everything stays in one record.</p><Button size="lg" className="mt-6 h-12 rounded-xl bg-[#e9ff9d] text-[#173d30] hover:bg-[#dff28b]" onClick={() => onView("create")}><Camera /> Scan new scrap</Button></div></section><div className="grid gap-4 sm:grid-cols-3"><Metric icon={WalletCards} label="Verified earnings" value={money(earnings)} /><Metric icon={Boxes} label="Total lots" value={String(data.lots.length)} /><Metric icon={Truck} label="Active pickups" value={String(data.lots.filter((lot) => lot.status === "scheduled").length)} /></div><section className="grid gap-4 lg:grid-cols-5"><Feature icon={Camera} title="AI Scrap Scanner" text="Real photo classification with collector confirmation." /><Feature icon={LockKeyhole} title="FairLock" text="Accepted rate cannot change without reason and approval." /><Feature icon={UsersRound} title="Cluster Pickup" text="Nearby opted-in lots combine to cross pickup minimums." /><Feature icon={FileCheck2} title="Material Passport" text="Public traceability record after verified handover." /><Feature icon={Landmark} title="JNARDDC Oversight" text="Prices, recyclers and flow monitored centrally." /></section>{data.lots.length === 0 && <Empty title="No collection lots yet" text="Use the AI Scanner to publish your first e-waste lot." />}</div>;
+}
+
+function CreateLot({ session, prices, act, onDone, onBanner }: { session: Session; prices: Price[]; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onDone: () => void; onBanner: (message: string) => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [material, setMaterial] = useState<MaterialKey>("cables");
+  const [condition, setCondition] = useState("Sorted");
+  const [weight, setWeight] = useState("");
+  const [location, setLocation] = useState(session.serviceArea || "");
+  const [scanning, setScanning] = useState(false);
+  const [confidence, setConfidence] = useState(0);
+  const [explanation, setExplanation] = useState("");
+  const [imageKey, setImageKey] = useState("");
+  const price = prices.find((item) => item.material === material);
+  const factor = condition === "Sorted" ? 1 : condition === "Mixed" ? 0.9 : 0.8;
+  const amount = Number(weight) || 0;
+  const scan = async (selected: File) => {
+    setFile(selected); setScanning(true); setExplanation("");
+    const form = new FormData(); form.append("image", selected);
+    try {
+      const result = await fetch("/api/scan", { method: "POST", body: form });
+      const payload = await result.json() as { material?: MaterialKey; confidence?: number; condition?: string; explanation?: string; safetyTip?: string; imageKey?: string; error?: string };
+      if (payload.imageKey) setImageKey(payload.imageKey);
+      if (!result.ok) throw new Error(payload.error || "Scanner failed");
+      if (payload.material) setMaterial(payload.material);
+      if (payload.condition) setCondition(payload.condition);
+      setConfidence(payload.confidence || 0); setExplanation(`${payload.explanation || "Material identified"} ${payload.safetyTip || ""}`.trim());
+      onBanner("AI scan complete — confirm the suggested category");
+    } catch (error) { setConfidence(0); setExplanation(error instanceof Error ? `${error.message} You can still select the material manually.` : "Select the material manually."); }
+    finally { setScanning(false); }
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!file || !amount || !location.trim()) return onBanner("Add a photo, weight and collection area");
+    await act("createLot", { material, condition, weight: amount, location, imageName: file.name, imageKey, aiConfidence: confidence });
+    onBanner("Lot published to the verified recycler network"); onDone();
+  };
+  return <div className="space-y-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">AI Scrap Scanner</p><h2 className="mt-2 text-3xl font-black">Photograph. Confirm. Publish.</h2></div><form onSubmit={submit} className="grid gap-5 xl:grid-cols-[1fr_0.9fr]"><section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm"><label htmlFor="scrap-photo" className="flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center">{scanning ? <><RefreshCw className="size-10 animate-spin" /><p className="mt-3 font-black">Vision model is analysing the photo…</p></> : file ? <><CheckCircle2 className="size-11 text-[#33734b]" /><p className="mt-3 font-black">{file.name}</p><p className="mt-1 text-xs text-[#6c7a72]">Tap to replace</p></> : <><UploadCloud className="size-11" /><p className="mt-3 font-black">Take or upload a clear scrap photo</p><p className="mt-1 text-xs text-[#6c7a72]">JPG, PNG or phone camera · maximum 5 MB</p></>}</label><Input id="scrap-photo" className="sr-only" type="file" accept="image/*" capture="environment" onChange={(event) => event.target.files?.[0] && void scan(event.target.files[0])} />{explanation && <div className={`mt-4 rounded-2xl p-4 text-sm leading-6 ${confidence ? "bg-[#eff7d3]" : "border border-amber-300 bg-amber-50"}`}><div className="flex items-center justify-between gap-3"><strong>{confidence ? `AI suggestion: ${materials[material].label}` : "Scanner notice"}</strong>{confidence > 0 && <span className="rounded-full bg-white px-3 py-1 text-xs font-black">{confidence}% confidence</span>}</div><p className="mt-2 text-[#65736b]">{explanation}</p></div>}</section><section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm"><h3 className="text-xl font-black">Confirm lot details</h3><div className="mt-5 space-y-4"><Field label="Material category"><Select value={material} onValueChange={(value) => setMaterial(value as MaterialKey)}><SelectTrigger className="h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(materials).map(([key, value]) => <SelectItem value={key} key={key}>{value.label}</SelectItem>)}</SelectContent></Select></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Approximate weight"><Input type="number" min="0.1" step="0.1" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="kg" className="h-12 bg-white" /></Field><Field label="Condition"><Select value={condition} onValueChange={setCondition}><SelectTrigger className="h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Sorted">Sorted</SelectItem><SelectItem value="Mixed">Mixed</SelectItem><SelectItem value="Damaged">Damaged / contaminated</SelectItem></SelectContent></Select></Field></div><Field label="Collection area"><Input value={location} onChange={(event) => setLocation(event.target.value)} className="h-12 bg-white" /></Field></div><div className="mt-5 rounded-2xl bg-[#173d30] p-5 text-white"><p className="text-xs text-white/60">Current JNARDDC reference range</p><p className="mt-2 text-2xl font-black">{price ? `${money(price.low * factor)}–${money(price.high * factor)} / kg` : "Loading…"}</p><p className="mt-2 text-xs text-white/60">Estimated lot: {price ? `${money(price.low * factor * amount)}–${money(price.high * factor * amount)}` : "—"}</p></div><Button size="lg" className="mt-5 h-12 w-full bg-[#173d30]" disabled={!file || scanning || amount <= 0}>Publish lot to recyclers</Button></section></form></div>;
+}
+
+function CollectorLots({ lots, recyclers, clusters, act }: { lots: Lot[]; recyclers: RecyclerProfile[]; clusters: Cluster[]; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
+  if (!lots.length) return <Empty title="No lots found" text="Publish a scrap photo to start the verified flow." />;
+  return <div className="space-y-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">Connected collection records</p><h2 className="mt-2 text-3xl font-black">My lots</h2></div>{lots.map((lot) => { const recycler = recyclers.find((item) => item.id === lot.selectedRecyclerId); const cluster = clusters.find((item) => item.cluster_id === lot.clusterId); return <article key={lot.id} className="rounded-[28px] border border-[#d5ded0] bg-[#f9fbf7] p-5 shadow-sm sm:p-6"><div className="flex flex-wrap items-start justify-between gap-4"><div className="flex gap-4"><span className="grid size-12 place-items-center rounded-2xl bg-[#e8f2b7] text-xl">{materials[lot.material].icon}</span><div><h3 className="text-xl font-black">{materials[lot.material].label}</h3><p className="mt-1 text-xs text-[#6c7972]">{lot.id} · {lot.weight} kg · {lot.location}</p></div></div><Status value={lot.status} /></div><div className="mt-5 grid gap-3 sm:grid-cols-4"><Info label="Reference value" value={`${money(lot.estimatedMin)}–${money(lot.estimatedMax)}`} /><Info label="Recycler" value={recycler?.name ?? "Waiting for offer"} /><Info label="FairLock" value={lot.fairLockId ?? "Not active"} /><Info label="Pickup" value={formatDate(lot.pickupDate)} /></div>{lot.status === "available" && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#fff4c9] p-4"><div><p className="font-black">Smart Cluster Pickup</p><p className="mt-1 text-xs text-[#6e602d]">{cluster ? `${cluster.lot_count} lots · ${cluster.total_weight} kg combined` : "Join nearby compatible collectors to reach pickup minimums."}</p></div><Button className="bg-[#725600]" disabled={Boolean(lot.clusterJoined)} onClick={() => void act("joinCluster", { lotId: lot.id })}><UsersRound />{lot.clusterJoined ? "Joined cluster" : "Join cluster"}</Button></div>}{lot.status === "locked" && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#edf6ca] p-4"><div><p className="font-black"><LockKeyhole className="mr-2 inline size-4" />Offer protected at {money(lot.lockedRate ?? 0)}/kg</p><p className="mt-1 text-xs">Valid until {formatDate(lot.validUntil)}. Confirm pickup to continue.</p></div><Button className="bg-[#173d30]" onClick={() => { const date = new Date(Date.now() + 86400000); date.setHours(10, 30, 0, 0); void act("schedulePickup", { lotId: lot.id, pickupDate: date.toISOString() }); }}><Truck />Schedule tomorrow</Button></div>}{lot.status === "completed" && <CompletedLot lot={lot} act={act} />}</article>; })}</div>;
+}
+
+function CompletedLot({ lot, act }: { lot: Lot; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
+  const [rating, setRating] = useState(lot.recyclerRating || 0); const [review, setReview] = useState(lot.recyclerReview || "");
+  return <div className="mt-4 grid gap-4 rounded-2xl bg-[#173d30] p-5 text-white lg:grid-cols-[1fr_auto]"><div><p className="text-xs font-bold uppercase tracking-wider text-[#e9ff9d]">Digital Material Passport</p><p className="mt-2 text-2xl font-black">{lot.passportId}</p><p className="mt-1 text-xs text-white/60">Final: {lot.finalWeight} kg × {money(lot.finalRate || 0)}/kg · {lot.paymentStatus}</p><div className="mt-4 flex flex-wrap gap-3">{lot.passportId && <a className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#e9ff9d] px-4 font-bold text-[#173d30]" href={`/passport/${lot.passportId}`} target="_blank" rel="noreferrer"><FileCheck2 />Open public passport</a>}<RatingStars value={rating} onChange={setRating} label="Rate recycler" /></div>{rating > 0 && <div className="mt-3 flex gap-2"><Input value={review} onChange={(event) => setReview(event.target.value)} placeholder="Recycler experience" className="h-11 max-w-md border-white/20 bg-white text-[#17312a]" /><Button variant="outline" className="border-white/25 bg-white/10 text-white" onClick={() => void act("rateRecycler", { lotId: lot.id, rating, review })}><Star />Save</Button></div>}</div><PackageCheck className="size-12 text-[#e9ff9d]" /></div>;
+}
+
+function PriceBoard({ prices, history }: { prices: Price[]; history: Record<string, unknown>[] }) {
+  return <div className="space-y-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">Authority-managed reference prices</p><h2 className="mt-2 text-3xl font-black">Fair price board</h2><p className="mt-2 text-sm text-[#66756d]">Every rate shows its source and update time. These are reference ranges; final weight and condition remain jointly verified.</p></div><section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{prices.map((price) => <article key={price.material} className="rounded-[26px] border border-[#d5ded0] bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><span className="text-2xl">{materials[price.material].icon}</span><span className="rounded-full bg-[#e8f2b7] px-3 py-1 text-xs font-bold">₹ / kg</span></div><h3 className="mt-4 font-black">{materials[price.material].label}</h3><p className="mt-2 text-2xl font-black">{money(price.low)}–{money(price.high)}</p><p className="mt-3 text-xs leading-5 text-[#6c7972]">Source: {price.source}<br />Updated {formatDate(price.updatedAt)}</p></article>)}</section>{history.length > 0 && <div className="rounded-[28px] bg-[#173d30] p-6 text-white"><p className="text-xs font-bold uppercase tracking-wider text-[#e9ff9d]">Audited price updates</p><div className="mt-4 flex gap-2 overflow-x-auto">{history.slice(0, 12).reverse().map((row) => <div key={String(row.id)} className="min-w-28 rounded-xl bg-white/10 p-3"><p className="text-xs capitalize text-white/60">{String(row.material)}</p><p className="mt-1 font-black">₹{String(row.high_rate)}</p></div>)}</div></div>}</div>;
+}
+
+function RecyclerArea({ session, view, data, act, onView }: { session: Session; view: View; data: Snapshot; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onView: (view: View) => void }) {
+  if (view === "help") return <Help profileId={session.id} act={act} />;
+  const open = data.lots.filter((lot) => lot.status === "available");
+  const assigned = data.lots.filter((lot) => lot.selectedRecyclerId === session.id && lot.status !== "completed");
+  const completed = data.lots.filter((lot) => lot.selectedRecyclerId === session.id && lot.status === "completed");
+  const shown = view === "handover" ? assigned : view === "history" ? completed : open;
+  return <div className="space-y-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">Recycler workspace</p><h2 className="mt-2 text-3xl font-black">{session.displayName}</h2><p className="mt-1 text-sm text-[#68766f]">{session.authorizationId} · {session.serviceArea}</p></div><span className={`rounded-full px-4 py-2 text-sm font-black ${session.verified ? "bg-[#dff2ab] text-[#31530b]" : "bg-amber-100 text-amber-900"}`}>{session.verified ? "JNARDDC verified" : "Verification pending"}</span></div>{!session.verified && <div className="flex gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm"><AlertTriangle className="shrink-0" /><div><p className="font-black">Authorization review is pending</p><p className="mt-1 text-xs leading-5">You can inspect open lots. Accepting material is enabled after JNARDDC verifies the submitted authorization ID.</p></div></div>}<div className="grid gap-4 sm:grid-cols-3"><Metric icon={Boxes} label="Open network lots" value={String(open.length)} /><Metric icon={Truck} label="My handovers" value={String(assigned.length)} /><Metric icon={Scale} label="Completed" value={String(completed.length)} /></div>{shown.length === 0 ? <Empty title="Nothing in this queue" text={view === "home" ? "New collector lots will appear after sync." : "Records move here as the handover progresses."} /> : shown.map((lot) => view === "home" ? <OfferCard key={lot.id} lot={lot} verified={session.verified} act={act} onAccepted={() => onView("handover")} /> : view === "handover" ? <HandoverCard key={lot.id} lot={lot} act={act} /> : <article key={lot.id} className="rounded-[26px] border border-[#d5ded0] bg-white p-5"><div className="flex items-center justify-between"><div><p className="font-black">{lot.passportId}</p><p className="mt-1 text-xs text-[#68766f]">{materials[lot.material].label} · {lot.finalWeight} kg · {formatDate(lot.completedAt)}</p></div>{lot.passportId && <a className="rounded-xl bg-[#173d30] px-4 py-3 text-sm font-bold text-white" href={`/passport/${lot.passportId}`} target="_blank" rel="noreferrer">Open passport</a>}</div></article>)}</div>;
+}
+
+function OfferCard({ lot, verified, act, onAccepted }: { lot: Lot; verified: boolean; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onAccepted: () => void }) {
+  const suggested = Math.round(((lot.estimatedMin + lot.estimatedMax) / 2) / lot.weight); const [rate, setRate] = useState(String(suggested));
+  return <article className="rounded-[28px] border border-[#d5ded0] bg-white p-5 shadow-sm"><div className="grid gap-4 md:grid-cols-[1.3fr_0.7fr_0.7fr_auto] md:items-center"><div><h3 className="text-lg font-black">{materials[lot.material].label}</h3><p className="mt-1 text-xs text-[#68766f]">{lot.id} · <MapPin className="inline size-3" /> {lot.location}</p></div><Info label="Approx. weight" value={`${lot.weight} kg`} /><Info label="Reference" value={`${money(lot.estimatedMin)}–${money(lot.estimatedMax)}`} /><div className="flex gap-2"><Input className="h-11 w-28" type="number" value={rate} onChange={(event) => setRate(event.target.value)} aria-label="Offer rate per kg" /><Button className="h-11 bg-[#173d30]" disabled={!verified || Number(rate) <= 0} onClick={async () => { await act("acceptLot", { lotId: lot.id, rate: Number(rate) }); onAccepted(); }}><LockKeyhole />Accept</Button></div></div></article>;
+}
+
+function HandoverCard({ lot, act }: { lot: Lot; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
+  const [weight, setWeight] = useState(String(lot.weight)); const [rate, setRate] = useState(String(lot.lockedRate || "")); const [reason, setReason] = useState(""); const [approved, setApproved] = useState(false); const [payment, setPayment] = useState("paid");
+  const changed = Number(rate) !== Number(lot.lockedRate) || Number(weight) !== Number(lot.weight);
+  return <article className="grid gap-5 rounded-[28px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm xl:grid-cols-[1fr_0.75fr]"><div><div className="flex justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#708078]">Final handover · {lot.id}</p><h3 className="mt-2 text-2xl font-black">{materials[lot.material].label}</h3></div><Status value={lot.status} /></div><div className="mt-5 grid gap-4 sm:grid-cols-2"><Field label="Final scale weight (kg)"><Input type="number" step="0.1" value={weight} onChange={(event) => setWeight(event.target.value)} className="h-12 bg-white" /></Field><Field label="Final rate per kg"><Input type="number" value={rate} onChange={(event) => setRate(event.target.value)} className="h-12 bg-white" /></Field></div>{changed && <Field label="Mandatory variance reason"><Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Condition, category or purity evidence" className="mt-4 h-12 bg-white" /></Field>}<div className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Payment status"><Select value={payment} onValueChange={setPayment}><SelectTrigger className="h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="paid">Paid</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="partial">Partial</SelectItem></SelectContent></Select></Field><div className="flex h-12 items-center justify-between self-end rounded-xl border border-[#cbd5c5] bg-white px-4"><span className="text-sm font-bold">Collector approved</span><Switch checked={approved} onCheckedChange={setApproved} /></div></div><Button className="mt-5 h-12 w-full bg-[#173d30]" disabled={!approved || (changed && !reason.trim())} onClick={() => void act("completeHandover", { lotId: lot.id, finalWeight: Number(weight), finalRate: Number(rate), priceChangeReason: reason, collectorApproved: approved, paymentStatus: payment })}><PackageCheck />Complete & issue passport</Button></div><div className="rounded-[24px] bg-[#173d30] p-6 text-white"><p className="text-xs font-bold uppercase tracking-wider text-[#e9ff9d]">FairLock settlement</p><p className="mt-3 text-4xl font-black">{money((Number(weight) || 0) * (Number(rate) || 0))}</p><div className="mt-5 space-y-3 text-sm"><InfoDark label="Locked rate" value={`${money(lot.lockedRate || 0)}/kg`} /><InfoDark label="Lock ID" value={lot.fairLockId || "—"} /><InfoDark label="Collector estimate" value={`${lot.weight} kg`} /></div></div></article>;
+}
+
+function AuthorityArea({ data, act }: { data: Snapshot; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
+  return <div className="space-y-6"><section className="rounded-[34px] bg-[#173d30] p-7 text-white sm:p-9"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#e9ff9d]"><Landmark /> National oversight</div><h2 className="mt-3 text-4xl font-black">JNARDDC Command Center</h2><p className="mt-2 max-w-2xl text-sm text-white/65">Monitor formal e-waste movement, verify recycler authorization and maintain transparent reference prices from one live data layer.</p></section><div className="grid gap-4 sm:grid-cols-4"><Metric icon={Boxes} label="Total lots" value={String(data.metrics.total_lots || 0)} /><Metric icon={Scale} label="Mapped material" value={`${Number(data.metrics.total_kg || 0).toFixed(1)} kg`} /><Metric icon={PackageCheck} label="Completed" value={String(data.metrics.completed || 0)} /><Metric icon={UsersRound} label="Clustered lots" value={String(data.metrics.clustered || 0)} /></div><section className="rounded-[28px] border border-[#d5ded0] bg-white p-5 shadow-sm sm:p-6"><h3 className="text-xl font-black">Recycler authorization control</h3><div className="mt-4 space-y-3">{data.recyclers.length ? data.recyclers.map((recycler) => <div key={recycler.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#f0f4ed] p-4"><div><p className="font-black">{recycler.name}</p><p className="mt-1 text-xs text-[#68766f]">{recycler.authorizationId} · {recycler.serviceArea}</p></div><Button className={recycler.verified ? "bg-[#8d3227]" : "bg-[#173d30]"} onClick={() => void act("verifyRecycler", { recyclerId: recycler.id, verified: !recycler.verified })}>{recycler.verified ? "Suspend verification" : "Verify recycler"}</Button></div>) : <p className="text-sm text-[#68766f]">No recycler registrations yet.</p>}</div></section><section className="rounded-[28px] border border-[#d5ded0] bg-white p-5 shadow-sm sm:p-6"><h3 className="text-xl font-black">Fair-price reference management</h3><p className="mt-1 text-xs text-[#68766f]">Every change creates a timestamped audit entry used by collector estimates.</p><div className="mt-4 grid gap-3">{data.prices.map((price) => <PriceEditor key={price.material} price={price} act={act} />)}</div></section><section className="grid gap-5 xl:grid-cols-2"><div className="rounded-[28px] border border-[#d5ded0] bg-white p-5"><h3 className="font-black">Active pickup clusters</h3><div className="mt-4 space-y-3">{data.clusters.length ? data.clusters.map((cluster) => <div key={cluster.cluster_id} className="rounded-2xl bg-[#fff4c9] p-4"><p className="font-black">{cluster.cluster_id} · {materials[cluster.material].label}</p><p className="mt-1 text-xs">{cluster.location} · {cluster.lot_count} lots · {cluster.total_weight} kg</p></div>) : <p className="text-sm text-[#68766f]">No active clusters.</p>}</div></div><div className="rounded-[28px] border border-[#d5ded0] bg-white p-5"><h3 className="font-black">Support signals</h3><div className="mt-4 space-y-3">{data.support.length ? data.support.map((record) => <div key={record.id} className="rounded-2xl bg-[#f0f4ed] p-4"><p className="text-xs font-bold uppercase">{record.kind} · {record.rating ? `${record.rating}/5` : record.status}</p><p className="mt-2 text-sm">{record.message}</p></div>) : <p className="text-sm text-[#68766f]">No open support records.</p>}</div></div></section></div>;
+}
+
+function PriceEditor({ price, act }: { price: Price; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
+  const [low, setLow] = useState(String(price.low)); const [high, setHigh] = useState(String(price.high)); const [source, setSource] = useState(price.source);
+  useEffect(() => { setLow(String(price.low)); setHigh(String(price.high)); setSource(price.source); }, [price.low, price.high, price.source]);
+  return <div className="grid gap-3 rounded-2xl bg-[#f0f4ed] p-4 md:grid-cols-[1fr_110px_110px_1.3fr_auto] md:items-center"><p className="font-black">{materials[price.material].label}</p><Input type="number" value={low} onChange={(event) => setLow(event.target.value)} aria-label="Low price" className="bg-white" /><Input type="number" value={high} onChange={(event) => setHigh(event.target.value)} aria-label="High price" className="bg-white" /><Input value={source} onChange={(event) => setSource(event.target.value)} aria-label="Price source" className="bg-white" /><Button className="bg-[#173d30]" onClick={() => void act("updatePrice", { material: price.material, low: Number(low), high: Number(high), source })}>Publish</Button></div>;
+}
+
+function Safety() {
+  const rows = [["🔋", "Isolate damaged batteries", "Keep them dry, shaded and away from metal scrap."], ["🔥", "Never burn cables", "Burning insulation releases toxic fumes and destroys recoverable value."], ["🧤", "Wear basic protection", "Use gloves, closed footwear and separate containers."], ["🖥️", "Protect glass panels", "Store LCD and CRT panels upright; do not break them."]];
+  return <div className="space-y-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">Pictorial safety guidance</p><h2 className="mt-2 text-3xl font-black">Handle safely. Never process informally.</h2></div><div className="grid gap-4 sm:grid-cols-2">{rows.map(([icon, title, text]) => <article key={title} className="rounded-[28px] border border-[#d5ded0] bg-white p-6"><span className="text-4xl">{icon}</span><h3 className="mt-4 text-xl font-black">{title}</h3><p className="mt-2 text-sm leading-6 text-[#68766f]">{text}</p></article>)}</div></div>;
+}
+
+function Help({ profileId, act }: { profileId: string; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
+  const [rating, setRating] = useState(0); const [message, setMessage] = useState(""); const [kind, setKind] = useState("feedback");
+  const submit = async (event: FormEvent) => { event.preventDefault(); await act("support", { kind, rating: rating || null, message, contact: profileId }); setMessage(""); setRating(0); };
+  return <div className="mx-auto max-w-4xl space-y-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">Support</p><h2 className="mt-2 text-3xl font-black">Help, feedback & FAQ</h2></div><section className="rounded-[28px] border border-[#d5ded0] bg-white p-6"><form onSubmit={submit} className="space-y-4"><Field label="Request type"><Select value={kind} onValueChange={setKind}><SelectTrigger className="h-12 w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="feedback">Platform feedback</SelectItem><SelectItem value="price">Price or FairLock issue</SelectItem><SelectItem value="pickup">Pickup help</SelectItem><SelectItem value="payment">Payment query</SelectItem></SelectContent></Select></Field>{kind === "feedback" && <Field label="Your rating"><RatingStars value={rating} onChange={setRating} /></Field>}<Field label="Tell us what happened"><Textarea value={message} onChange={(event) => setMessage(event.target.value)} className="min-h-32" placeholder="Use simple words; the command center will receive this record." /></Field><Button className="h-12 w-full bg-[#173d30]" disabled={!message.trim()}>Submit to support</Button></form></section><section className="rounded-[28px] border border-[#d5ded0] bg-[#f9fbf7] p-6"><h3 className="text-xl font-black">Frequently asked questions</h3><div className="mt-4 space-y-4"><Faq q="Is the displayed price guaranteed?" a="It is a transparent reference range. FairLock protects a recycler's accepted rate; final condition and measured weight are jointly confirmed." /><Faq q="What works offline?" a="The installed PWA opens cached screens. New server transactions, current prices and recycler matching sync when internet returns." /><Faq q="How is a recycler verified?" a="The command center reviews the CPCB or SPCB authorization ID before enabling lot acceptance." /><Faq q="What is a Material Passport?" a="It is the public traceability record generated only after an assigned recycler completes an approved handover." /></div></section></div>;
+}
+
+function VoiceDock({ language, role, onView, onSpeak, onBanner }: { language: Language; role: Role; onView: (view: View) => void; onSpeak: () => void; onBanner: (message: string) => void }) {
+  const [listening, setListening] = useState(false);
+  const listen = () => {
+    const target = window as unknown as { SpeechRecognition?: new () => { lang: string; start(): void; onresult: ((event: { results: { 0: { 0: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null }; webkitSpeechRecognition?: new () => { lang: string; start(): void; onresult: ((event: { results: { 0: { 0: { transcript: string } } } }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null } };
+    const Recognition = target.SpeechRecognition || target.webkitSpeechRecognition;
+    if (!Recognition) return onBanner("Voice activation needs Chrome or a supported mobile browser");
+    const recognition = new Recognition(); recognition.lang = voiceLocales[language]; setListening(true);
+    recognition.onend = () => setListening(false); recognition.onerror = () => { setListening(false); onBanner("Voice command was not captured"); };
+    recognition.onresult = (event) => {
+      const text = event.results[0][0].transcript.toLowerCase();
+      const map: [string[], View][] = [
+        [["scan", "photo", "create"].concat(Object.values(translations).map((item) => item.create.toLowerCase())), "create"],
+        [["lot", "collection"], "lots"], [["price", "market"], "market"], [["safety"], "safety"],
+        [["help", "faq"], "help"], [["handover", "pickup"], "handover"], [["history", "passport"], "history"],
+      ];
+      const found = map.find(([keys]) => keys.some((key) => text.includes(key)));
+      if (found && role !== "authority") { onView(found[1]); onBanner(`Opened ${found[1]} by voice`); }
+      else onBanner(`Heard “${text}”. Try scan, lots, price, safety, handover or passport.`);
+    };
+    recognition.start();
+  };
+  return <div className="fixed bottom-24 right-4 z-50 flex gap-2 lg:bottom-6"><Button size="icon-lg" className="size-14 rounded-full border-4 border-[#edf1e8] bg-[#42664e] shadow-xl" onClick={onSpeak} aria-label="Listen to this screen"><AudioLines /></Button><Button size="icon-lg" className={`size-14 rounded-full border-4 border-[#edf1e8] shadow-xl ${listening ? "bg-[#b33f31]" : "bg-[#173d30]"}`} onClick={listen} aria-label="Activate voice navigation"><Mic2 className={listening ? "animate-pulse" : ""} /></Button></div>;
+}
+
+function Metric({ icon: Icon, label, value }: { icon: typeof Recycle; label: string; value: string }) { return <div className="rounded-[24px] border border-[#d5ded0] bg-white p-5 shadow-sm"><Icon className="size-5 text-[#45664f]" /><p className="mt-4 text-xs font-bold text-[#718078]">{label}</p><p className="mt-1 text-2xl font-black">{value}</p></div>; }
+function Feature({ icon: Icon, title, text }: { icon: typeof Recycle; title: string; text: string }) { return <article className="rounded-[24px] border border-[#d5ded0] bg-[#f9fbf7] p-5"><Icon className="size-6 text-[#45664f]" /><h3 className="mt-4 font-black">{title}</h3><p className="mt-2 text-xs leading-5 text-[#68766f]">{text}</p></article>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-bold text-[#465b51]">{label}</span>{children}</label>; }
+function Info({ label, value }: { label: string; value: string }) { return <div className="rounded-2xl bg-[#edf2e9] p-3"><p className="text-[11px] font-bold text-[#748279]">{label}</p><p className="mt-1 break-words text-sm font-black">{value}</p></div>; }
+function InfoDark({ label, value }: { label: string; value: string }) { return <div className="flex justify-between gap-4 border-b border-white/10 pb-3"><span className="text-white/55">{label}</span><strong className="text-right">{value}</strong></div>; }
+function Empty({ title, text }: { title: string; text: string }) { return <div className="rounded-[30px] border border-[#d5ded0] bg-white p-10 text-center"><Boxes className="mx-auto size-12 text-[#809087]" /><h3 className="mt-4 text-2xl font-black">{title}</h3><p className="mt-2 text-sm text-[#68766f]">{text}</p></div>; }
+function Status({ value }: { value: string }) { return <span className="rounded-full bg-[#e8f2b7] px-3 py-1.5 text-xs font-black capitalize text-[#3e5804]">{value.replaceAll("_", " ")}</span>; }
+function Faq({ q, a }: { q: string; a: string }) { return <details className="rounded-2xl bg-white p-4"><summary className="cursor-pointer font-black">{q}</summary><p className="mt-3 text-sm leading-6 text-[#68766f]">{a}</p></details>; }
