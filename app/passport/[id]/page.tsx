@@ -5,8 +5,13 @@ export const dynamic = "force-dynamic";
 
 export default async function PassportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const runtime = (await import("cloudflare:workers")).env as unknown as { DB?: D1Database };
-  const db = runtime.DB;
+  let db: D1Database | null = null;
+  try {
+    const runtime = (await import("cloudflare:workers")).env as unknown as { DB?: D1Database };
+    db = runtime?.DB ?? null;
+  } catch {
+    db = null;
+  }
   const lot = db ? await db.prepare(
     `SELECT l.*, c.display_name AS collector_name, r.display_name AS recycler_name,
       r.authorization_id AS recycler_authorization

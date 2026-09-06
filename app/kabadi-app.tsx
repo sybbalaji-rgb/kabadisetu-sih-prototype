@@ -5,7 +5,7 @@ import {
   AlertTriangle, AudioLines, BarChart3, Boxes, Camera, CheckCircle2,
   FileCheck2, Headphones, Languages, Landmark, Leaf, LockKeyhole,
   LogOut, MapPin, Mic2, PackageCheck, Recycle, RefreshCw, Scale, ShieldCheck,
-  Star, Truck, UploadCloud, UserRound, UsersRound, WalletCards,
+  Sparkles, Star, Truck, UploadCloud, UserRound, UsersRound, WalletCards,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,39 +215,287 @@ function CollectorArea({ session, view, data, act, onView, onBanner }: { session
 function CreateLot({ session, prices, act, onDone, onBanner }: { session: Session; prices: Price[]; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onDone: () => void; onBanner: (message: string) => void }) {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
-  const [material, setMaterial] = useState<MaterialKey>("cables");
+  const [material, setMaterial] = useState<MaterialKey | "">("");
   const [condition, setCondition] = useState("Sorted");
   const [weight, setWeight] = useState("");
   const [location, setLocation] = useState(session.serviceArea || "");
   const [scanning, setScanning] = useState(false);
   const [confidence, setConfidence] = useState(0);
   const [explanation, setExplanation] = useState("");
+  const [identifiedObject, setIdentifiedObject] = useState("");
+  const [suggestedCategory, setSuggestedCategory] = useState("");
+  const [detectedComponents, setDetectedComponents] = useState<string[]>([]);
+  const [suggestedWeight, setSuggestedWeight] = useState<number | null>(null);
   const [imageKey, setImageKey] = useState("");
-  const price = prices.find((item) => item.material === material);
+
+  const price = material ? prices.find((item) => item.material === material) : null;
   const factor = condition === "Sorted" ? 1 : condition === "Mixed" ? 0.9 : 0.8;
   const amount = Number(weight) || 0;
+
   const scan = async (selected: File) => {
-    setFile(selected); setScanning(true); setExplanation("");
-    const form = new FormData(); form.append("image", selected);
+    setFile(selected);
+    setScanning(true);
+    setExplanation("");
+    setIdentifiedObject("");
+    setSuggestedCategory("");
+    setDetectedComponents([]);
+    setSuggestedWeight(null);
+
+    const form = new FormData();
+    form.append("image", selected);
+
     try {
       const result = await fetch("/api/scan", { method: "POST", body: form });
-      const payload = await result.json() as { material?: MaterialKey; confidence?: number; condition?: string; explanation?: string; safetyTip?: string; imageKey?: string; error?: string };
+      const payload = (await result.json()) as {
+        object?: string;
+        category?: string;
+        material?: MaterialKey;
+        confidence?: number;
+        condition?: string;
+        components?: string[];
+        suggestedWeight?: number;
+        explanation?: string;
+        safetyTip?: string;
+        imageKey?: string;
+        error?: string;
+      };
+
       if (payload.imageKey) setImageKey(payload.imageKey);
-      if (!result.ok) throw new Error(payload.error || "Scanner failed");
+
+      if (!result.ok) {
+        console.error("[KabadiApp:AI-Scanner] API returned error status:", result.status, payload);
+        throw new Error(payload.error || "Scanner failed");
+      }
+
+      if (payload.object) setIdentifiedObject(payload.object);
+      if (payload.category) setSuggestedCategory(payload.category);
+      if (Array.isArray(payload.components)) setDetectedComponents(payload.components);
       if (payload.material) setMaterial(payload.material);
       if (payload.condition) setCondition(payload.condition);
-      setConfidence(payload.confidence || 0); setExplanation(`${payload.explanation || "Material identified"} ${payload.safetyTip || ""}`.trim());
+      if (payload.suggestedWeight != null && (!weight || weight === "0")) {
+        setWeight(String(payload.suggestedWeight));
+        setSuggestedWeight(payload.suggestedWeight);
+      }
+      setConfidence(payload.confidence || 0);
+      setExplanation(
+        `${payload.explanation || "Material category detected."} ${payload.safetyTip || ""}`.trim()
+      );
       onBanner(t("scan_complete_banner"));
-    } catch (error) { setConfidence(0); setExplanation(error instanceof Error ? `${error.message} You can still select the material manually.` : "Select the material manually."); }
-    finally { setScanning(false); }
+    } catch (error) {
+      console.error("[KabadiApp:AI-Scanner] Image scan error:", error);
+      setConfidence(0);
+      setIdentifiedObject("");
+      setSuggestedCategory("");
+      setDetectedComponents([]);
+      setExplanation("Unable to analyze this image. Please try again or select the category manually.");
+    } finally {
+      setScanning(false);
+    }
   };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!file || !amount || !location.trim()) return onBanner("Add a photo, weight and collection area");
-    await act("createLot", { material, condition, weight: amount, location, imageName: file.name, imageKey, aiConfidence: confidence });
-    onBanner(t("lot_published_banner")); onDone();
+    if (!material) {
+      return onBanner("Please scan or select a material category first");
+    }
+    if (!file || !amount || !location.trim()) {
+      return onBanner("Add a photo, weight and collection area");
+    }
+    await act("createLot", {
+      material,
+      condition,
+      weight: amount,
+      location,
+      imageName: file.name,
+      imageKey,
+      aiConfidence: confidence,
+    });
+    onBanner(t("lot_published_banner"));
+    onDone();
   };
-  return <div className="space-y-5"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">{t("ai_scanner_title")}</p><h2 className="mt-2 text-3xl font-black">{t("scanner_heading")}</h2></div><form onSubmit={submit} className="grid gap-5 xl:grid-cols-[1fr_0.9fr]"><section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm"><label htmlFor="scrap-photo" className="flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center">{scanning ? <><RefreshCw className="size-10 animate-spin" /><p className="mt-3 font-black">{t("scanner_analyzing")}</p></> : file ? <><CheckCircle2 className="size-11 text-[#33734b]" /><p className="mt-3 font-black">{file.name}</p><p className="mt-1 text-xs text-[#6c7a72]">{t("tap_to_replace")}</p></> : <><UploadCloud className="size-11" /><p className="mt-3 font-black">{t("scanner_upload")}</p><p className="mt-1 text-xs text-[#6c7a72]">{t("scanner_upload_sub")}</p></>}</label><Input id="scrap-photo" className="sr-only" type="file" accept="image/*" capture="environment" onChange={(event) => event.target.files?.[0] && void scan(event.target.files[0])} />{explanation && <div className={`mt-4 rounded-2xl p-4 text-sm leading-6 ${confidence ? "bg-[#eff7d3]" : "border border-amber-300 bg-amber-50"}`}><div className="flex items-center justify-between gap-3"><strong>{confidence ? `AI: ${getMaterialLabel(material, t)}` : "Scanner notice"}</strong>{confidence > 0 && <span className="rounded-full bg-white px-3 py-1 text-xs font-black">{confidence}% confidence</span>}</div><p className="mt-2 text-[#65736b]">{explanation}</p></div>}</section><section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm"><h3 className="text-xl font-black">{t("confirm_details")}</h3><div className="mt-5 space-y-4"><Field label={t("material_category")}><Select value={material} onValueChange={(value) => setMaterial(value as MaterialKey)}><SelectTrigger className="h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(materials).map(([key]) => <SelectItem value={key} key={key}>{getMaterialLabel(key as MaterialKey, t)}</SelectItem>)}</SelectContent></Select></Field><div className="grid gap-4 sm:grid-cols-2"><Field label={t("approx_weight")}><Input type="number" min="0.1" step="0.1" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="kg" className="h-12 bg-white" /></Field><Field label={t("condition")}><Select value={condition} onValueChange={setCondition}><SelectTrigger className="h-12 w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Sorted">{t("condition_sorted")}</SelectItem><SelectItem value="Mixed">{t("condition_mixed")}</SelectItem><SelectItem value="Damaged">{t("condition_damaged")}</SelectItem></SelectContent></Select></Field></div><Field label={t("collection_area")}><Input value={location} onChange={(event) => setLocation(event.target.value)} className="h-12 bg-white" /></Field></div><div className="mt-5 rounded-2xl bg-[#173d30] p-5 text-white"><p className="text-xs text-white/60">{t("current_reference_range")}</p><p className="mt-2 text-2xl font-black">{price ? `${money(price.low * factor)}–${money(price.high * factor)} / kg` : "Loading…"}</p><p className="mt-2 text-xs text-white/60">{t("estimated_lot_value")}: {price ? `${money(price.low * factor * amount)}–${money(price.high * factor * amount)}` : "—"}</p></div><Button size="lg" className="mt-5 h-12 w-full bg-[#173d30]" disabled={!file || scanning || amount <= 0}>{t("publish_lot")}</Button></section></form></div>;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#708078]">{t("ai_scanner_title")}</p>
+        <h2 className="mt-2 text-3xl font-black">{t("scanner_heading")}</h2>
+      </div>
+      <form onSubmit={submit} className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
+        <section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm">
+          <label
+            htmlFor="scrap-photo"
+            className="flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center"
+          >
+            {scanning ? (
+              <>
+                <RefreshCw className="size-10 animate-spin" />
+                <p className="mt-3 font-black">{t("scanner_analyzing")}</p>
+              </>
+            ) : file ? (
+              <>
+                <CheckCircle2 className="size-11 text-[#33734b]" />
+                <p className="mt-3 font-black">{file.name}</p>
+                <p className="mt-1 text-xs text-[#6c7a72]">{t("tap_to_replace")}</p>
+              </>
+            ) : (
+              <>
+                <UploadCloud className="size-11" />
+                <p className="mt-3 font-black">{t("scanner_upload")}</p>
+                <p className="mt-1 text-xs text-[#6c7a72]">{t("scanner_upload_sub")}</p>
+              </>
+            )}
+          </label>
+          <Input
+            id="scrap-photo"
+            className="sr-only"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(event) => event.target.files?.[0] && void scan(event.target.files[0])}
+          />
+
+          {explanation && (
+            <div
+              className={`mt-4 rounded-2xl p-4 text-sm leading-6 ${
+                confidence > 0 ? "border border-[#cde0a6] bg-[#f2f9e4]" : "border border-amber-300 bg-amber-50"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-[#2f6a40]" />
+                  <strong className="text-base font-black text-[#173d30]">
+                    {identifiedObject || (confidence && material ? `AI: ${getMaterialLabel(material, t)}` : "Scanner notice")}
+                  </strong>
+                </div>
+                {confidence > 0 && (
+                  <span className="rounded-full bg-[#173d30] px-3 py-0.5 text-xs font-black text-[#e9ff9d]">
+                    {confidence}% confidence
+                  </span>
+                )}
+              </div>
+
+              {suggestedCategory && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold text-[#355342]">
+                  <span className="uppercase tracking-wider text-[#698273]">Category:</span>
+                  <span className="rounded-md border border-[#cbe1a9] bg-white px-2 py-0.5 font-black text-[#1c4735]">
+                    {suggestedCategory}
+                  </span>
+                  {material && (
+                    <span className="text-[11px] font-medium text-[#657a6e]">
+                      (Mapped to: {getMaterialLabel(material, t)})
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {detectedComponents.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#698273]">Detected Materials & Components</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {detectedComponents.map((comp, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center rounded-lg border border-[#cce0cb] bg-white px-2.5 py-1 text-xs font-semibold text-[#204432] shadow-2xs"
+                      >
+                        • {comp}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {suggestedWeight != null && (
+                <p className="mt-2.5 text-xs font-semibold text-[#3b5746]">
+                  Suggested Approx. Weight: <span className="font-black text-[#173d30]">{suggestedWeight} kg</span>
+                </p>
+              )}
+
+              <p className="mt-2.5 text-xs leading-5 text-[#597163] border-t border-[#dce8d5] pt-2">
+                {explanation}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm">
+          <h3 className="text-xl font-black">{t("confirm_details")}</h3>
+          <div className="mt-5 space-y-4">
+            <Field label={t("material_category")}>
+              <Select value={material} onValueChange={(value) => setMaterial(value as MaterialKey)}>
+                <SelectTrigger className="h-12 w-full bg-white">
+                  <SelectValue placeholder="Select material category…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(materials).map(([key]) => (
+                    <SelectItem value={key} key={key}>
+                      {getMaterialLabel(key as MaterialKey, t)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("approx_weight")}>
+                <Input
+                  type="number"
+                  min="0.05"
+                  step="0.05"
+                  value={weight}
+                  onChange={(event) => setWeight(event.target.value)}
+                  placeholder="kg"
+                  className="h-12 bg-white"
+                />
+              </Field>
+              <Field label={t("condition")}>
+                <Select value={condition} onValueChange={setCondition}>
+                  <SelectTrigger className="h-12 w-full bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Sorted">{t("condition_sorted")}</SelectItem>
+                    <SelectItem value="Mixed">{t("condition_mixed")}</SelectItem>
+                    <SelectItem value="Damaged">{t("condition_damaged")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+
+            <Field label={t("collection_area")}>
+              <Input
+                value={location}
+                onChange={(event) => setLocation(event.target.value)}
+                className="h-12 bg-white"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-5 rounded-2xl bg-[#173d30] p-5 text-white">
+            <p className="text-xs text-white/60">{t("current_reference_range")}</p>
+            <p className="mt-2 text-2xl font-black">
+              {material && price
+                ? `${money(price.low * factor)}–${money(price.high * factor)} / kg`
+                : material
+                ? "Loading…"
+                : "Select a category to view prices"}
+            </p>
+            <p className="mt-2 text-xs text-white/60">
+              {t("estimated_lot_value")}:{" "}
+              {material && price ? `${money(price.low * factor * amount)}–${money(price.high * factor * amount)}` : "—"}
+            </p>
+          </div>
+
+          <Button
+            size="lg"
+            className="mt-5 h-12 w-full bg-[#173d30]"
+            disabled={!file || scanning || amount <= 0 || !material}
+          >
+            {t("publish_lot")}
+          </Button>
+        </section>
+      </form>
+    </div>
+  );
 }
 
 function CollectorLots({ lots, recyclers, clusters, act }: { lots: Lot[]; recyclers: RecyclerProfile[]; clusters: Cluster[]; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>> }) {
