@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 type Role = "collector" | "recycler" | "authority";
 
 const MATERIALS = ["cables", "batteries", "pcb", "panels", "motors", "plastics"] as const;
@@ -39,6 +42,7 @@ function memSeedPrices() {
 /* ─── Cloudflare D1 path ─── */
 
 async function tryGetD1(): Promise<D1Database | null> {
+  if (process.env.VERCEL) return null;
   try {
     const { env } = await import("cloudflare:workers");
     return (env as unknown as { DB?: D1Database }).DB ?? null;
@@ -53,6 +57,7 @@ async function tryGetD1(): Promise<D1Database | null> {
 const DEMO_AUTHORITY_ACCESS_CODE = "JNARDDC2026";
 
 async function tryGetAuthorityCode(): Promise<string | undefined> {
+  if (process.env.VERCEL) return process.env.AUTHORITY_ACCESS_CODE ?? DEMO_AUTHORITY_ACCESS_CODE;
   try {
     const { env } = await import("cloudflare:workers");
     return (env as unknown as { AUTHORITY_ACCESS_CODE?: string }).AUTHORITY_ACCESS_CODE ?? DEMO_AUTHORITY_ACCESS_CODE;
