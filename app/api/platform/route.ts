@@ -47,12 +47,17 @@ async function tryGetD1(): Promise<D1Database | null> {
   }
 }
 
+// Demo access code used when no AUTHORITY_ACCESS_CODE is configured via
+// Cloudflare bindings or process.env. Safe for the SIH prototype; a production
+// deployment would always use a secret binding / env var instead.
+const DEMO_AUTHORITY_ACCESS_CODE = "JNARDDC2026";
+
 async function tryGetAuthorityCode(): Promise<string | undefined> {
   try {
     const { env } = await import("cloudflare:workers");
-    return (env as unknown as { AUTHORITY_ACCESS_CODE?: string }).AUTHORITY_ACCESS_CODE;
+    return (env as unknown as { AUTHORITY_ACCESS_CODE?: string }).AUTHORITY_ACCESS_CODE ?? DEMO_AUTHORITY_ACCESS_CODE;
   } catch {
-    return process.env.AUTHORITY_ACCESS_CODE;
+    return process.env.AUTHORITY_ACCESS_CODE ?? DEMO_AUTHORITY_ACCESS_CODE;
   }
 }
 
