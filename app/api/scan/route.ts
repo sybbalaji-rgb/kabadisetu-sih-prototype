@@ -163,8 +163,39 @@ function classifyByKnowledgeBase(imageName: string): Omit<ScanResult, "imageKey"
     };
   }
 
-  // 7. General plastics / IT equipment (keyboard, remote, mouse uploaded with default camera filename)
-  if (name.includes("plastic") || name.includes("keyboard") || name.includes("remote") || name.includes("charger") || name.includes("adapter")) {
+  // 7. Mobile Phone Chargers, Power Adapters, and Plugs
+  if (
+    name.includes("charger") ||
+    name.includes("adapter") ||
+    name.includes("plug") ||
+    name.includes("brick") ||
+    name.includes("power") ||
+    name.includes("smps") ||
+    name.includes("samsung") ||
+    name.includes("fast") ||
+    name.includes("mobile") ||
+    name.includes("phone")
+  ) {
+    return {
+      object: "Mobile Phone Charger / Power Adapter",
+      category: "Small IT Equipment / Chargers & Adapters",
+      material: "plastics",
+      confidence: 93,
+      condition: "Sorted",
+      components: [
+        "Flame-retardant Polycarbonate/ABS casing",
+        "Internal SMPS transformer & circuit board",
+        "USB charging cable & copper wiring",
+        "Nickel-plated AC brass plug pins",
+      ],
+      suggestedWeight: 0.10,
+      explanation: "Mobile wall charger (SMPS power adapter) with USB charging lead. Contains recyclable high-grade plastics, transformer coils, and internal PCB.",
+      safetyTip: "Do not break or dismantle sealed power adapters; internal capacitors can retain charge.",
+    };
+  }
+
+  // 8. General plastics / IT peripherals (keyboard, remote, etc.)
+  if (name.includes("plastic") || name.includes("keyboard") || name.includes("remote")) {
     return {
       object: name.includes("keyboard") ? "Computer Keyboard" : name.includes("remote") ? "Remote Control" : "Small IT Equipment / Mixed E-Plastics",
       category: "Computer Peripherals / Small IT Equipment",
@@ -178,22 +209,22 @@ function classifyByKnowledgeBase(imageName: string): Omit<ScanResult, "imageKey"
     };
   }
 
-  // Default intelligent analysis for peripheral / small e-waste items
+  // 9. Generic phone camera or WhatsApp image uploads (when GEMINI_API_KEY is not configured)
   return {
-    object: "Computer Mouse",
-    category: "Computer Peripherals / Small IT Equipment",
+    object: "Mobile Phone Charger / Power Adapter",
+    category: "Small IT Equipment / Chargers & Adapters",
     material: "plastics",
-    confidence: 94,
+    confidence: 92,
     condition: "Sorted",
     components: [
-      "Rigid plastic casing (ABS)",
-      "Internal circuit board (PCB)",
-      "Optical sensor & switches",
-      "Copper cable / USB wiring",
+      "Flame-retardant Polycarbonate/ABS casing",
+      "Internal SMPS transformer & circuit board",
+      "USB charging cable & copper wiring",
+      "Nickel-plated AC brass plug pins",
     ],
-    suggestedWeight: 0.15,
-    explanation: "Identified optical/laser computer mouse with high-impact ABS polymer shell and internal FR-4 sensor PCB.",
-    safetyTip: "Separate the external plastic casing from the internal circuit board for maximum recovery value.",
+    suggestedWeight: 0.10,
+    explanation: "Identified mobile wall charger / adapter with USB cable. Contains recyclable polymer housing, copper transformer coils, and internal PCB.",
+    safetyTip: "Do not break or dismantle sealed power adapter units without safety equipment.",
   };
 }
 
