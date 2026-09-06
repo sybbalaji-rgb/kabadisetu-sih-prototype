@@ -83,6 +83,11 @@ export function RoleLogin({
   const sendOtp = async () => {
     if (!name.trim() || contact.length !== 10) return setError("Please enter your name and a valid 10-digit mobile number.");
     if (!serviceArea.trim()) return setError("Collection area is required.");
+    
+    if (supabaseUrl === "https://placeholder.supabase.co") {
+      return setError("⚠️ Supabase is not configured. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment variables.");
+    }
+
     setError("");
     setSuccessMsg("");
     setOtpState("sending");
