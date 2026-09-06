@@ -17,6 +17,9 @@ export const metadata: Metadata = {
     shortcut: "/favicon.svg",
     apple: "/icons/apple-touch-icon.png",
   },
+  other: {
+    "codex-preview": "development",
+  },
 };
 
 export const viewport: Viewport = {
