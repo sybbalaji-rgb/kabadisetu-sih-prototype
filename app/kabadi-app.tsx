@@ -127,10 +127,10 @@ export function KabadiApp() {
   if (!hydrated) return <main className="grid min-h-screen place-items-center bg-[#edf1e8]"><Recycle className="size-10 animate-pulse text-[#173d30]" /></main>;
 
   return <><LanguageRuntime language={language} />
+    {banner && <div className="fixed left-1/2 top-20 z-[70] w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-[#173d30] px-5 py-3 text-center text-sm font-bold text-white shadow-xl" role="status">{banner}</div>}
     {!session ? <RoleLogin language={language} onLanguage={setLanguage} onLogin={(details) => void login(details)} /> :
       <main className="min-h-screen bg-[#edf1e8] pb-24 text-[#17312a] lg:pb-8">
         <Header session={session} language={language} onLanguage={setLanguage} onRefresh={() => void refresh()} onLogout={logout} loading={loading} />
-        {banner && <div className="fixed left-1/2 top-20 z-[70] w-max max-w-[90vw] -translate-x-1/2 rounded-full bg-[#173d30] px-5 py-3 text-center text-sm font-bold text-white shadow-xl" role="status">{banner}</div>}
         <div className="mx-auto flex max-w-[1500px] gap-5 px-4 py-5 sm:px-6">
           <Navigation role={session.role} view={view} onView={setView} />
           <section className="min-w-0 flex-1" data-screen>
