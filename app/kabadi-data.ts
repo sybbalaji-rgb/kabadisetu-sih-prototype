@@ -3,7 +3,7 @@ import { ChartCandlestick, CircleHelp, Handshake, Home, LifeBuoy, Plus, ShieldAl
 export type Role = "collector" | "recycler" | "authority";
 export type CollectorView = "home" | "create" | "matches" | "ledger" | "safety" | "market" | "help" | "faq";
 export type RecyclerView = "lots" | "handover" | "history";
-export type Language = "en" | "hi" | "mr" | "ta" | "te" | "kn" | "ml" | "bn" | "gu" | "pa" | "or" | "as";
+export type Language = "en" | "ta" | "hi" | "ml" | "te" | "kn" | "mr" | "bn" | "gu" | "pa" | "or" | "ur" | "as";
 export type MaterialKey = "cables" | "batteries" | "pcb" | "panels" | "motors" | "plastics";
 export type LotStatus = "available" | "offline" | "locked" | "scheduled" | "completed";
 
@@ -68,11 +68,12 @@ export const translations = {
   pa: { home: "ਹੋਮ", create: "ਲਾਟ ਬਣਾਓ", matches: "ਰੀਸਾਈਕਲਰ", ledger: "ਕਮਾਈ", safety: "ਸੁਰੱਖਿਆ", market: "ਲਾਈਵ ਕੀਮਤਾਂ", help: "ਮਦਦ", faq: "ਅਕਸਰ ਸਵਾਲ", welcome: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, ਰਵੀ", subtitle: "ਅੱਜ ਦੇ ਸੰਗ੍ਰਹਿ ਨੂੰ ਸੁਰੱਖਿਅਤ ਅਤੇ ਵਧੀਆ ਮੁੱਲ ਵਾਲੀ ਹਵਾਲਗੀ ਬਣਾਓ।", newLot: "ਨਵੀਂ ਲਾਟ", earnings: "ਕੁੱਲ ਕਮਾਈ", pending: "ਬਾਕੀ ਭੁਗਤਾਨ", pickup: "ਅਗਲਾ ਪਿਕਅਪ", assistant: "ਵੌਇਸ ਸਹਾਇਕ", listen: "ਇਹ ਸਕ੍ਰੀਨ ਸੁਣੋ", speakCommand: "ਕਮਾਂਡ ਬੋਲੋ", tapToTalk: "ਬੋਲਣ ਲਈ ਮਾਈਕ ਦਬਾਓ", collector: "ਸੰਗ੍ਰਹਿਕ", recycler: "ਰੀਸਾਈਕਲਰ", lots: "ਲਾਟ", handover: "ਹਵਾਲਗੀ", history: "ਇਤਿਹਾਸ" },
   or: { home: "ହୋମ୍", create: "ଲଟ୍ ତିଆରି କରନ୍ତୁ", matches: "ରିସାଇକ୍ଲର୍", ledger: "ଆୟ", safety: "ସୁରକ୍ଷା", market: "ସିଧା ମୂଲ୍ୟ", help: "ସହାୟତା", faq: "ସାଧାରଣ ପ୍ରଶ୍ନ", welcome: "ନମସ୍କାର, ରବି", subtitle: "ଆଜିର ସଂଗ୍ରହକୁ ସୁରକ୍ଷିତ ଏବଂ ଭଲ ମୂଲ୍ୟର ହସ୍ତାନ୍ତରରେ ପରିଣତ କରନ୍ତୁ।", newLot: "ନୂଆ ଲଟ୍", earnings: "ମୋଟ ଆୟ", pending: "ବକେୟା ଦେୟ", pickup: "ପରବର୍ତ୍ତୀ ପିକଅପ୍", assistant: "ଭଏସ୍ ସହାୟକ", listen: "ଏହି ସ୍କ୍ରିନ୍ ଶୁଣନ୍ତୁ", speakCommand: "କମାଣ୍ଡ କହନ୍ତୁ", tapToTalk: "କହିବାକୁ ମାଇକ୍ ଦବାନ୍ତୁ", collector: "ସଂଗ୍ରାହକ", recycler: "ରିସାଇକ୍ଲର୍", lots: "ଲଟ୍", handover: "ହସ୍ତାନ୍ତର", history: "ଇତିହାସ" },
   as: { home: "হোম", create: "লট তৈয়াৰ কৰক", matches: "পুনঃচক্ৰীকৰণকাৰী", ledger: "উপাৰ্জন", safety: "সুৰক্ষা", market: "সজীৱ মূল্য", help: "সহায়", faq: "সঘনাই প্ৰশ্ন", welcome: "নমস্কাৰ, ৰবি", subtitle: "আজিৰ সংগ্ৰহক সুৰক্ষিত আৰু উন্নত মূল্যৰ হস্তান্তৰলৈ ৰূপান্তৰ কৰক।", newLot: "নতুন লট", earnings: "মুঠ উপাৰ্জন", pending: "বাকী পৰিশোধ", pickup: "পৰৱৰ্তী পিকআপ", assistant: "কণ্ঠ সহায়ক", listen: "এই স্ক্ৰীন শুনক", speakCommand: "আদেশ কওক", tapToTalk: "কথা ক’বলৈ মাইক টিপক", collector: "সংগ্ৰাহক", recycler: "পুনঃচক্ৰীকৰণকাৰী", lots: "লটসমূহ", handover: "হস্তান্তৰ", history: "ইতিহাস" },
+  ur: { home: "ہوم", create: "نیا لاٹ بنائیں", matches: "ری سائیکلر", ledger: "آمدنی", safety: "حفاظت", market: "لائیو قیمتیں", help: "مدد", faq: "عام سوالات", welcome: "خوش آمدید، روی", subtitle: "آج کے اسکریپ کو محفوظ اور بہتر قیمت پر بیچیں۔", newLot: "نیا لاٹ", earnings: "کل آمدنی", pending: "باقی ادائیگی", pickup: "اگلا پک اپ", assistant: "وائس اسسٹنٹ", listen: "یہ اسکرین سنیں", speakCommand: "کمانڈ بولیں", tapToTalk: "بولنے کے لیے مائیک دبائیں", collector: "کلکٹر", recycler: "ری سائیکلر", lots: "لاٹس", handover: "حوالگی", history: "تاریخ" },
 };
 
 export const voiceLocales: Record<Language, string> = {
-  en: "en-IN", hi: "hi-IN", mr: "mr-IN", ta: "ta-IN", te: "te-IN", kn: "kn-IN",
-  ml: "ml-IN", bn: "bn-IN", gu: "gu-IN", pa: "pa-IN", or: "or-IN", as: "as-IN",
+  en: "en-IN", ta: "ta-IN", hi: "hi-IN", ml: "ml-IN", te: "te-IN", kn: "kn-IN",
+  mr: "mr-IN", bn: "bn-IN", gu: "gu-IN", pa: "pa-IN", or: "or-IN", ur: "ur-IN", as: "as-IN",
 };
 
 export const voicePromptParts: Record<Language, { before: string; after: string }> = {
@@ -88,6 +89,7 @@ export const voicePromptParts: Record<Language, { before: string; after: string 
   pa: { before: "ਤੁਸੀਂ", after: "ਸਕ੍ਰੀਨ ਉੱਤੇ ਹੋ। ਅੱਗੇ ਜਾਣ ਲਈ ਕਮਾਂਡ ਬੋਲੋ ਜਾਂ ਸਕ੍ਰੀਨ ਮਾਰਗਦਰਸ਼ਨ ਸੁਣੋ।" },
   or: { before: "ଆପଣ", after: "ସ୍କ୍ରିନ୍‌ରେ ଅଛନ୍ତି। ଆଗକୁ ଯିବାକୁ କମାଣ୍ଡ କହନ୍ତୁ କିମ୍ବା ସ୍କ୍ରିନ୍ ମାର୍ଗଦର୍ଶନ ଶୁଣନ୍ତୁ।" },
   as: { before: "আপুনি", after: "স্ক্ৰীনত আছে। আগবাঢ়িবলৈ আদেশ কওক বা স্ক্ৰীন নিৰ্দেশনা শুনক।" },
+  ur: { before: "آپ", after: "اسکرین پر ہیں۔ آگے جانے کے لیے کمانڈ بولیں یا اسکرین کی رہنمائی سنیں۔" },
 };
 
 export const seedLots: Lot[] = [

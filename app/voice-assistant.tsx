@@ -44,7 +44,7 @@ export function GlobalVoiceAssistant(props: VoiceProps) {
   const screenMessage = `${voicePromptParts[props.language].before} ${currentScreen} ${voicePromptParts[props.language].after}`;
   const quickCommands = useMemo(() => props.role === "collector" ? [tr.home, tr.create, tr.matches, tr.ledger, tr.safety, tr.market, tr.help, tr.faq, `${tr.recycler} dashboard`] : [tr.lots, tr.handover, tr.history, `${tr.collector} app`], [props.role, tr]);
 
-  const valuesFor = (key: keyof (typeof translations)[Language]) => Object.values(translations).map((copy) => String(copy[key]).toLocaleLowerCase());
+  const valuesFor = (key: keyof (typeof translations)["en"]) => Object.values(translations).map((copy) => String((copy as Record<string, string>)[key]).toLocaleLowerCase());
   const hasAny = (text: string, values: string[]) => values.some((value) => text.includes(value));
 
   const applyCommand = (spoken: string) => {
