@@ -63,6 +63,7 @@ export function RoleLogin({
     setSuccessMsg("");
     setOtpState("idle");
     setOtp("");
+    setSimulatedOtp("");
   };
 
   const speak = () => {
@@ -80,17 +81,26 @@ export function RoleLogin({
     window.speechSynthesis.speak(message);
   };
 
+  const [simulatedOtp, setSimulatedOtp] = useState("");
+
   const sendOtp = async () => {
     if (!name.trim() || contact.length !== 10) return setError("Please enter your name and a valid 10-digit mobile number.");
     if (!serviceArea.trim()) return setError("Collection area is required.");
-    
-    if (supabaseUrl === "https://placeholder.supabase.co") {
-      return setError("⚠️ Supabase is not configured. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your environment variables.");
-    }
 
     setError("");
     setSuccessMsg("");
     setOtpState("sending");
+
+    if (supabaseUrl === "https://placeholder.supabase.co") {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const testCode = "123456";
+      setSimulatedOtp(testCode);
+      setOtpState("sent");
+      setTimer(30);
+      setSuccessMsg("OTP sent successfully! (Prototype test code: 123456)");
+      return;
+    }
+
     try {
       const { error } = await supabase.auth.signInWithOtp({
         phone: `+91${contact}`,
@@ -110,6 +120,23 @@ export function RoleLogin({
     setError("");
     setSuccessMsg("");
     setOtpState("verifying");
+
+    if (supabaseUrl === "https://placeholder.supabase.co") {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (timer <= 0) {
+        setError("⚠️ OTP expired. Please request a new OTP.");
+        setOtpState("sent");
+        return;
+      }
+      if (otp !== simulatedOtp && otp !== "123456") {
+        setError("❌ Incorrect OTP. Please try again.");
+        setOtpState("sent");
+        return;
+      }
+      onLogin({ role: "collector", displayName: name.trim(), contact: `+91${contact}`, serviceArea: serviceArea.trim() });
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.verifyOtp({
         phone: `+91${contact}`,
