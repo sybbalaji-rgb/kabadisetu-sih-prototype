@@ -4,8 +4,8 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, AudioLines, BarChart3, Boxes, Camera, CheckCircle2,
   FileCheck2, Headphones, Languages, Landmark, Leaf, LockKeyhole,
-  LogOut, MapPin, Mic2, PackageCheck, Recycle, RefreshCw, Scale, ShieldCheck,
-  Sparkles, Star, Truck, UploadCloud, UserRound, UsersRound, WalletCards,
+  LogOut, MapPin, Mic2, PackageCheck, Recycle, RefreshCw, RotateCcw, Scale, ShieldCheck,
+  Sparkles, Star, Truck, UploadCloud, UserRound, UsersRound, Video, WalletCards, X,
   Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -296,6 +296,161 @@ async function compressImageForUpload(file: File): Promise<File> {
   });
 }
 
+function LiveCameraModal({
+  isOpen,
+  onClose,
+  onCapture,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onCapture: (file: File) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        setStream(null);
+      }
+      return;
+    }
+
+    let currentStream: MediaStream | null = null;
+    setError(null);
+
+    async function initCamera() {
+      try {
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Live video camera is not supported on this browser.");
+        }
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+        currentStream = s;
+        setStream(s);
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.play().catch(() => {});
+        }
+      } catch (err: unknown) {
+        console.warn("[LiveCameraModal] Error starting camera:", err);
+        setError("Camera permission denied or camera not accessible. Please allow camera access or use the Camera button.");
+      }
+    }
+
+    void initCamera();
+
+    return () => {
+      if (currentStream) {
+        currentStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [isOpen, facingMode]);
+
+  if (!isOpen) return null;
+
+  const captureFrame = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          const capturedFile = new File([blob], `live-scan-${Date.now()}.jpg`, {
+            type: "image/jpeg",
+          });
+          onCapture(capturedFile);
+          onClose();
+        }
+      },
+      "image/jpeg",
+      0.85
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-xs">
+      <div className="relative flex w-full max-w-md flex-col overflow-hidden rounded-3xl bg-[#173d30] text-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <Camera className="size-4 text-[#e9ff9d]" />
+            <span className="text-sm font-black tracking-wide">Live AI Scrap Scanner</span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex size-8 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="relative aspect-4/3 w-full bg-black overflow-hidden flex items-center justify-center">
+          {error ? (
+            <div className="p-6 text-center text-amber-200">
+              <p className="text-sm font-semibold">{error}</p>
+            </div>
+          ) : (
+            <>
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+              <div className="pointer-events-none absolute inset-6 rounded-2xl border-2 border-dashed border-[#e9ff9d]/70" />
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between px-6 py-4 bg-[#112d23]">
+          <button
+            type="button"
+            onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-xs font-bold text-white hover:bg-white/20 active:scale-95"
+          >
+            <RotateCcw className="size-3.5" />
+            <span>Flip</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={captureFrame}
+            disabled={Boolean(error)}
+            title="Snap Photo"
+            className="flex size-14 items-center justify-center rounded-full border-4 border-white bg-[#e9ff9d] text-[#173d30] shadow-lg transition active:scale-90 disabled:opacity-50 cursor-pointer"
+          >
+            <div className="size-6 rounded-full bg-[#173d30]" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full bg-white/10 px-3.5 py-2 text-xs font-bold text-white hover:bg-white/20 active:scale-95"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CreateLot({ session, prices, act, onDone, onBanner }: { session: Session; prices: Price[]; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onDone: () => void; onBanner: (message: string) => void }) {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
@@ -312,9 +467,9 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
   const [detectedComponents, setDetectedComponents] = useState<string[]>([]);
   const [suggestedWeight, setSuggestedWeight] = useState<number | null>(null);
   const [imageKey, setImageKey] = useState("");
+  const [liveCameraOpen, setLiveCameraOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!file) {
@@ -475,46 +630,70 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
             )}
 
             {/* Quick Action Buttons for Mobile */}
-            <div className="mt-4 flex w-full max-w-xs flex-wrap items-center justify-center gap-2 border-t border-[#d8e3d4] pt-3">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  cameraInputRef.current?.click();
-                }}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#173d30] px-4 py-2 text-xs font-bold text-[#e9ff9d] shadow-sm transition hover:bg-[#225741] active:scale-95"
+            <div className="mt-4 flex w-full max-w-sm flex-wrap items-center justify-center gap-2 border-t border-[#d8e3d4] pt-3">
+              {/* Native Camera Direct Tap: input directly covers label so tap lands on input */}
+              <label
+                onClick={(e) => e.stopPropagation()}
+                className="relative inline-flex cursor-pointer items-center justify-center gap-1.5 overflow-hidden rounded-full bg-[#173d30] px-3.5 py-2 text-xs font-bold text-[#e9ff9d] shadow-sm transition hover:bg-[#225741] active:scale-95"
               >
                 <Camera className="size-3.5" />
-                <span>Camera</span>
-              </button>
+                <span>📷 Camera</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  onChange={handleFileInput}
+                />
+              </label>
+
+              {/* In-App Live Camera Viewfinder */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  fileInputRef.current?.click();
+                  setLiveCameraOpen(true);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#b8ccb5] bg-white px-4 py-2 text-xs font-bold text-[#173d30] shadow-2xs transition hover:bg-[#edf4eb] active:scale-95"
+                className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full bg-[#2a5b3e] px-3.5 py-2 text-xs font-bold text-[#f5ffdb] shadow-sm transition hover:bg-[#1e442d] active:scale-95"
+              >
+                <Video className="size-3.5 text-[#e9ff9d]" />
+                <span>Live Viewfinder</span>
+              </button>
+
+              {/* Gallery / File Picker */}
+              <label
+                onClick={(e) => e.stopPropagation()}
+                className="relative inline-flex cursor-pointer items-center justify-center gap-1.5 overflow-hidden rounded-full border border-[#b8ccb5] bg-white px-3.5 py-2 text-xs font-bold text-[#173d30] shadow-2xs transition hover:bg-[#edf4eb] active:scale-95"
               >
                 <ImageIcon className="size-3.5" />
                 <span>Gallery / Files</span>
-              </button>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  onChange={handleFileInput}
+                />
+              </label>
             </div>
           </div>
 
-          <input
-            ref={cameraInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleFileInput}
-          />
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
             className="hidden"
             onChange={handleFileInput}
+          />
+
+          <LiveCameraModal
+            isOpen={liveCameraOpen}
+            onClose={() => setLiveCameraOpen(false)}
+            onCapture={(capturedFile) => {
+              void (async () => {
+                const ready = await compressImageForUpload(capturedFile);
+                void scan(ready);
+              })();
+            }}
           />
 
           {explanation && (
