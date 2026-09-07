@@ -204,64 +204,69 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const model = getGeminiModel();
-  console.log(`[/api/scan] Calling ${model} | size: ${bytes.length}b | type: ${image.type}`);
+  const primaryModel = getGeminiModel();
+  const candidateModels = Array.from(new Set([primaryModel, "gemini-flash-latest", "gemini-flash-lite-latest"]));
+  console.log(`[/api/scan] Models: [${candidateModels.join(", ")}] | size: ${bytes.length}b | type: ${image.type}`);
 
-  // 6. Call Gemini Vision
+  // 6. Call Gemini Vision with model failover
+  let rawText = "";
+  let lastError: unknown = null;
+
   try {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-    const aiResponse = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: VISION_PROMPT },
-              { inline_data: { mime_type: image.type, data: toBase64(bytes) } },
+    for (const model of candidateModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const aiResponse = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: VISION_PROMPT },
+                  { inline_data: { mime_type: image.type, data: toBase64(bytes) } },
+                ],
+              },
             ],
-          },
-        ],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.1, maxOutputTokens: 1024 },
-      }),
-    });
+            generationConfig: { responseMimeType: "application/json", temperature: 0.1, maxOutputTokens: 1024 },
+          }),
+        });
 
-    if (!aiResponse.ok) {
-      const errBody = await aiResponse.text().catch(() => "");
-      console.error(`[/api/scan] Gemini HTTP ${aiResponse.status}:`, errBody.slice(0, 500));
-      return json(
-        {
-          error: "Unable to analyse this image right now. Please try again.",
-          retryable: true,
-        },
-        500
-      );
+        if (!aiResponse.ok) {
+          const errBody = await aiResponse.text().catch(() => "");
+          console.warn(`[/api/scan] Model ${model} HTTP ${aiResponse.status}: ${errBody.slice(0, 150)}`);
+          continue;
+        }
+
+        const payload = (await aiResponse.json()) as {
+          candidates?: { content?: { parts?: { text?: string }[] } }[];
+          error?: { message?: string };
+        };
+
+        if (payload.error) {
+          console.warn(`[/api/scan] Model ${model} API error: ${payload.error.message}`);
+          continue;
+        }
+
+        const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+        if (text) {
+          rawText = text;
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+        console.warn(`[/api/scan] Error calling model ${model}:`, err);
+      }
     }
 
-
-
-    const payload = (await aiResponse.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-      error?: { message?: string };
-    };
-
-    if (payload.error) {
-      console.error("[/api/scan] Gemini API error:", payload.error.message);
+    if (!rawText) {
+      console.error("[/api/scan] All vision models failed. Last error:", lastError);
       return json(
         { error: "Unable to analyse this image right now. Please try again.", retryable: true },
         500
       );
     }
 
-    const rawText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    if (!rawText) {
-      console.error("[/api/scan] Gemini returned empty response");
-      return json(
-        { error: "The AI returned no result. Please try again with a clearer photo.", retryable: true },
-        500
-      );
-    }
 
     // 7. Parse and validate AI response
     const parsed = extractJson(rawText);
