@@ -300,10 +300,12 @@ function LiveCameraModal({
   isOpen,
   onClose,
   onCapture,
+  onFileSelect,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onCapture: (file: File) => void;
+  onFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -328,11 +330,7 @@ function LiveCameraModal({
           throw new Error("Live video camera is not supported on this browser.");
         }
         const s = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: facingMode },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
+          video: { facingMode: { ideal: facingMode } },
           audio: false,
         });
         currentStream = s;
@@ -343,7 +341,7 @@ function LiveCameraModal({
         }
       } catch (err: unknown) {
         console.warn("[LiveCameraModal] Error starting camera:", err);
-        setError("Camera permission denied or camera not accessible. Please allow camera access or use the Camera button.");
+        setError("Camera permission denied or camera not accessible in this browser.");
       }
     }
 
@@ -399,10 +397,34 @@ function LiveCameraModal({
           </button>
         </div>
 
-        <div className="relative aspect-4/3 w-full bg-black overflow-hidden flex items-center justify-center">
+        <div className="relative aspect-4/3 w-full bg-black overflow-hidden flex items-center justify-center p-5">
           {error ? (
-            <div className="p-6 text-center text-amber-200">
-              <p className="text-sm font-semibold">{error}</p>
+            <div className="flex flex-col items-center justify-center text-center p-2">
+              <div className="flex size-12 items-center justify-center rounded-full bg-amber-500/20 text-amber-300">
+                <Camera className="size-6" />
+              </div>
+              <p className="mt-3 text-sm font-bold text-white max-w-xs">{error}</p>
+              <p className="mt-1 text-xs text-white/70 max-w-xs leading-relaxed">
+                Browser blocked live video stream. You can still take a clear photo directly with your device camera:
+              </p>
+              <label
+                htmlFor="modal-camera-fallback"
+                className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-[#e9ff9d] px-5 py-2.5 text-xs font-black text-[#173d30] shadow-lg transition active:scale-95"
+              >
+                <Camera className="size-4" />
+                <span>📷 Open Phone Camera App</span>
+              </label>
+              <input
+                id="modal-camera-fallback"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={(e) => {
+                  onClose();
+                  onFileSelect(e);
+                }}
+              />
             </div>
           ) : (
             <>
@@ -422,7 +444,8 @@ function LiveCameraModal({
           <button
             type="button"
             onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
-            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-xs font-bold text-white hover:bg-white/20 active:scale-95"
+            disabled={Boolean(error)}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-xs font-bold text-white hover:bg-white/20 active:scale-95 disabled:opacity-40"
           >
             <RotateCcw className="size-3.5" />
             <span>Flip</span>
@@ -591,13 +614,7 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
       </div>
       <form onSubmit={submit} className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
         <section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm">
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
-            className="group relative flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center transition hover:border-[#33734b] hover:bg-[#e4ede0]"
-          >
+          <div className="flex min-h-64 flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center">
             {scanning ? (
               <div className="flex flex-col items-center justify-center py-6">
                 <RefreshCw className="size-11 animate-spin text-[#204e38]" />
@@ -605,7 +622,7 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
                 <p className="mt-1 text-xs text-[#52665b]">Analyzing item with AI...</p>
               </div>
             ) : previewUrl ? (
-              <div className="flex flex-col items-center justify-center py-2">
+              <label htmlFor="main-gallery-input" className="flex cursor-pointer flex-col items-center justify-center py-2">
                 <div className="relative mb-3 max-h-48 overflow-hidden rounded-2xl border-2 border-[#33734b] shadow-md">
                   <img
                     src={previewUrl}
@@ -618,72 +635,63 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
                 </div>
                 <p className="max-w-xs truncate text-sm font-black text-[#173d30]">{file?.name}</p>
                 <p className="mt-1 text-xs font-semibold text-[#52665b]">{t("tap_to_replace")}</p>
-              </div>
+              </label>
             ) : (
-              <div className="flex flex-col items-center justify-center py-4">
+              <label htmlFor="main-gallery-input" className="flex cursor-pointer flex-col items-center justify-center py-4">
                 <div className="flex size-14 items-center justify-center rounded-full bg-white shadow-xs">
                   <UploadCloud className="size-7 text-[#245339]" />
                 </div>
                 <p className="mt-3 text-base font-black text-[#173d30]">{t("scanner_upload")}</p>
                 <p className="mt-1 max-w-xs text-xs text-[#6c7a72]">{t("scanner_upload_sub")}</p>
-              </div>
+              </label>
             )}
 
-            {/* Quick Action Buttons for Mobile */}
-            <div className="mt-4 flex w-full max-w-sm flex-wrap items-center justify-center gap-2 border-t border-[#d8e3d4] pt-3">
-              {/* Native Camera Direct Tap: input directly covers label so tap lands on input */}
+            {/* Clear, Dedicated Touch Buttons for Mobile & Desktop */}
+            <div className="mt-4 flex w-full max-w-sm flex-wrap items-center justify-center gap-2.5 border-t border-[#d8e3d4] pt-3.5">
+              {/* Option 1: Native Phone Camera */}
               <label
-                onClick={(e) => e.stopPropagation()}
-                className="relative inline-flex cursor-pointer items-center justify-center gap-1.5 overflow-hidden rounded-full bg-[#173d30] px-3.5 py-2 text-xs font-bold text-[#e9ff9d] shadow-sm transition hover:bg-[#225741] active:scale-95"
+                htmlFor="main-camera-input"
+                className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full bg-[#173d30] px-4 py-2.5 text-xs font-bold text-[#e9ff9d] shadow-sm transition hover:bg-[#225741] active:scale-95"
               >
                 <Camera className="size-3.5" />
-                <span>📷 Camera</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  onChange={handleFileInput}
-                />
+                <span>📷 Phone Camera</span>
               </label>
+              <input
+                id="main-camera-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={handleFileInput}
+              />
 
-              {/* In-App Live Camera Viewfinder */}
+              {/* Option 2: Live In-App Viewfinder */}
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setLiveCameraOpen(true);
-                }}
-                className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full bg-[#2a5b3e] px-3.5 py-2 text-xs font-bold text-[#f5ffdb] shadow-sm transition hover:bg-[#1e442d] active:scale-95"
+                onClick={() => setLiveCameraOpen(true)}
+                className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full bg-[#2a5b3e] px-4 py-2.5 text-xs font-bold text-[#f5ffdb] shadow-sm transition hover:bg-[#1e442d] active:scale-95"
               >
                 <Video className="size-3.5 text-[#e9ff9d]" />
                 <span>Live Viewfinder</span>
               </button>
 
-              {/* Gallery / File Picker */}
+              {/* Option 3: Gallery / Files */}
               <label
-                onClick={(e) => e.stopPropagation()}
-                className="relative inline-flex cursor-pointer items-center justify-center gap-1.5 overflow-hidden rounded-full border border-[#b8ccb5] bg-white px-3.5 py-2 text-xs font-bold text-[#173d30] shadow-2xs transition hover:bg-[#edf4eb] active:scale-95"
+                htmlFor="main-gallery-input"
+                className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full border border-[#b8ccb5] bg-white px-4 py-2.5 text-xs font-bold text-[#173d30] shadow-2xs transition hover:bg-[#edf4eb] active:scale-95"
               >
                 <ImageIcon className="size-3.5" />
-                <span>Gallery / Files</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  onChange={handleFileInput}
-                />
+                <span>📁 Gallery / Files</span>
               </label>
+              <input
+                id="main-gallery-input"
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={handleFileInput}
+              />
             </div>
           </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileInput}
-          />
 
           <LiveCameraModal
             isOpen={liveCameraOpen}
@@ -694,6 +702,7 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
                 void scan(ready);
               })();
             }}
+            onFileSelect={handleFileInput}
           />
 
           {explanation && (
