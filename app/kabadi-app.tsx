@@ -491,6 +491,9 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
   const [suggestedWeight, setSuggestedWeight] = useState<number | null>(null);
   const [imageKey, setImageKey] = useState("");
   const [liveCameraOpen, setLiveCameraOpen] = useState(false);
+  const [lowConfidence, setLowConfidence] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [lastScannedFile, setLastScannedFile] = useState<File | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -526,12 +529,15 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
 
   const scan = async (selected: File) => {
     setFile(selected);
+    setLastScannedFile(selected);
     setScanning(true);
     setExplanation("");
     setIdentifiedObject("");
     setSuggestedCategory("");
     setDetectedComponents([]);
     setSuggestedWeight(null);
+    setLowConfidence(false);
+    setScanError(null);
 
     const form = new FormData();
     form.append("image", selected);
@@ -550,13 +556,16 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
         safetyTip?: string;
         imageKey?: string;
         error?: string;
+        retryable?: boolean;
+        lowConfidence?: boolean;
       };
 
       if (payload.imageKey) setImageKey(payload.imageKey);
 
       if (!result.ok) {
         console.error("[KabadiApp:AI-Scanner] API returned error status:", result.status, payload);
-        throw new Error(payload.error || "Scanner failed");
+        setScanError(payload.error || "Unable to analyse this image right now. Please try again.");
+        return;
       }
 
       if (payload.object) setIdentifiedObject(payload.object);
@@ -569,6 +578,7 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
         setSuggestedWeight(payload.suggestedWeight);
       }
       setConfidence(payload.confidence || 0);
+      setLowConfidence(Boolean(payload.lowConfidence));
       setExplanation(
         `${payload.explanation || "Material category detected."} ${payload.safetyTip || ""}`.trim()
       );
@@ -579,11 +589,12 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
       setIdentifiedObject("");
       setSuggestedCategory("");
       setDetectedComponents([]);
-      setExplanation("Unable to analyze this image. Please try again or select the category manually.");
+      setScanError("Unable to analyse this image right now. Please try again or select the category manually.");
     } finally {
       setScanning(false);
     }
   };
+
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -705,25 +716,68 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
             onFileSelect={handleFileInput}
           />
 
-          {explanation && (
+          {/* Scan Error Card — shown when AI analysis fails */}
+          {scanError && !scanning && (
+            <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 text-lg">⚠️</span>
+                <div className="flex-1">
+                  <p className="font-black text-amber-900">{scanError}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {lastScannedFile && (
+                      <button
+                        type="button"
+                        onClick={() => { void scan(lastScannedFile); }}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#173d30] px-4 py-2 text-xs font-bold text-[#e9ff9d] shadow-sm transition hover:bg-[#225741] active:scale-95"
+                      >
+                        <RefreshCw className="size-3.5" />
+                        Retry Analysis
+                      </button>
+                    )}
+                    <span className="inline-flex items-center text-xs font-medium text-amber-700">
+                      — or select category manually below →
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AI Result Card — shown when scan succeeds */}
+          {explanation && !scanError && (
             <div
               className={`mt-4 rounded-2xl p-4 text-sm leading-6 ${
-                confidence > 0 ? "border border-[#cde0a6] bg-[#f2f9e4]" : "border border-amber-300 bg-amber-50"
+                lowConfidence
+                  ? "border border-amber-300 bg-amber-50"
+                  : "border border-[#cde0a6] bg-[#f2f9e4]"
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Sparkles className="size-4 text-[#2f6a40]" />
                   <strong className="text-base font-black text-[#173d30]">
-                    {identifiedObject || (confidence && material ? `AI: ${getMaterialLabel(material, t)}` : "Scanner notice")}
+                    {identifiedObject || (confidence && material ? `AI: ${getMaterialLabel(material, t)}` : "Scanner result")}
                   </strong>
                 </div>
                 {confidence > 0 && (
-                  <span className="rounded-full bg-[#173d30] px-3 py-0.5 text-xs font-black text-[#e9ff9d]">
+                  <span
+                    className={`rounded-full px-3 py-0.5 text-xs font-black ${
+                      lowConfidence
+                        ? "bg-amber-200 text-amber-900"
+                        : "bg-[#173d30] text-[#e9ff9d]"
+                    }`}
+                  >
                     {confidence}% confidence
                   </span>
                 )}
               </div>
+
+              {/* Low confidence warning */}
+              {lowConfidence && (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800">
+                  ⚠️ AI is not fully confident about this item. Please verify the category below and correct it if needed.
+                </p>
+              )}
 
               {suggestedCategory && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-bold text-[#355342]">
@@ -766,6 +820,7 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
               </p>
             </div>
           )}
+
         </section>
 
         <section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm">

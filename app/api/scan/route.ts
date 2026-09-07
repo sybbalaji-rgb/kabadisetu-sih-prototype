@@ -1,61 +1,44 @@
+/**
+ * /api/scan — AI Scrap Scanner Backend
+ *
+ * Pipeline:
+ *   1. Receive image via multipart/form-data
+ *   2. Validate image (type, size)
+ *   3. Send image bytes + structured prompt to Gemini Vision API
+ *   4. Parse and validate AI response (object → category → material)
+ *   5. Return structured JSON result
+ *
+ * No cloudflare:workers dependencies. Works in Node.js, Vercel, and local dev.
+ * Errors are logged internally; users receive friendly messages.
+ */
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type ScanEnv = {
-  BUCKET?: R2Bucket;
-  GEMINI_API_KEY?: string;
-  GEMINI_MODEL?: string;
-};
+/**
+ * Read GEMINI_API_KEY from environment variables.
+ * Never touches cloudflare:workers — works in all runtimes.
+ */
+function getGeminiApiKey(): string | null {
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
+    null
+  );
+}
 
-async function getScanEnv(): Promise<ScanEnv> {
-  let cfEnv: ScanEnv | undefined;
-  if (!process.env.VERCEL) {
-    try {
-      const cf = await import("cloudflare:workers");
-      cfEnv = cf?.env as unknown as ScanEnv;
-    } catch {
-      // Cloudflare Workers module not available in Node / Antigravity / Next runtime
-    }
-  }
-
-  return {
-    BUCKET: cfEnv?.BUCKET,
-    GEMINI_API_KEY:
-      cfEnv?.GEMINI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      process.env.VITE_GEMINI_API_KEY ||
-      process.env.NEXT_PUBLIC_GEMINI_API_KEY,
-    GEMINI_MODEL:
-      cfEnv?.GEMINI_MODEL ||
-      process.env.GEMINI_MODEL ||
-      "gemini-flash-latest",
-  };
+/**
+ * Return the Gemini model to use.
+ * gemini-flash-latest is confirmed working with this API key.
+ */
+function getGeminiModel(): string {
+  const configured = (process.env.GEMINI_MODEL || "").trim();
+  return configured || "gemini-flash-latest";
 }
 
 const allowed = new Set(["cables", "batteries", "pcb", "panels", "motors", "plastics"]);
 
-function json(data: unknown, status = 200) {
-  return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
-}
-
-function toBase64(bytes: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64");
-  }
-  let binary = "";
-  for (let start = 0; start < bytes.length; start += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(start, start + 0x8000));
-  }
-  return btoa(binary);
-}
-
-function extractJson(value: string) {
-  const clean = value.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-  const start = clean.indexOf("{");
-  const end = clean.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("The vision model returned an invalid result");
-  return JSON.parse(clean.slice(start, end + 1)) as Record<string, unknown>;
-}
 
 export type ScanResult = {
   object: string;
@@ -68,295 +51,234 @@ export type ScanResult = {
   explanation: string;
   safetyTip: string;
   imageKey: string;
+  lowConfidence?: boolean;
 };
 
-function classifyByKnowledgeBase(imageName: string): Omit<ScanResult, "imageKey"> {
-  const name = imageName.toLowerCase();
+// ─── Vision Prompt ─────────────────────────────────────────────────────────────
+// The prompt instructs the AI to classify based on what it SEES in the image.
+// It does NOT reference the file name. This prevents the "always returns Charger" bug.
 
-  // 1. Peripheral items: Computer Mouse / Pointer
-  if (name.includes("mouse") || name.includes("pointer") || name.includes("trackball") || name.includes("peripheral")) {
-    return {
-      object: "Computer Mouse",
-      category: "Computer Peripherals / Small IT Equipment",
-      material: "plastics",
-      confidence: 94,
-      condition: "Sorted",
-      components: [
-        "Rigid plastic casing (ABS)",
-        "Internal circuit board (PCB)",
-        "Optical sensor & switches",
-        "Copper cable / USB wiring",
-      ],
-      suggestedWeight: 0.15,
-      explanation: "Identified optical/laser computer mouse with high-impact ABS polymer shell and internal FR-4 sensor PCB.",
-      safetyTip: "Separate the external plastic casing from the internal circuit board for maximum recovery value.",
-    };
-  }
+const VISION_PROMPT = `You are an expert AI vision classifier for Indian e-waste recycling, certified under CPCB/EPR norms and JNARDDC standards.
 
-  // 2. Cables and Wires
-  if (name.includes("cable") || name.includes("wire") || name.includes("cord") || name.includes("lead") || name.includes("harness")) {
-    return {
-      object: "Copper Cables / Wire Bundle",
-      category: "Cables & Wiring",
-      material: "cables",
-      confidence: 92,
-      condition: "Sorted",
-      components: ["Copper core conductors", "PVC insulation sheath"],
-      suggestedWeight: 2.0,
-      explanation: "High-grade copper wiring suitable for mechanical stripping and metal recovery.",
-      safetyTip: "Do not burn insulation to recover copper; use mechanical wire stripping.",
-    };
-  }
+TASK: Look carefully at the actual physical object in the image. Identify it precisely.
 
-  // 3. Batteries
-  if (name.includes("battery") || name.includes("cell") || name.includes("accumulator") || name.includes("li-ion") || name.includes("lead-acid")) {
-    return {
-      object: "Rechargeable Batteries",
-      category: "Portable Batteries / Cells",
-      material: "batteries",
-      confidence: 91,
-      condition: "Sorted",
-      components: ["Lithium / Lead electrode cells", "Polymer casing", "Metal contact terminals"],
-      suggestedWeight: 1.0,
-      explanation: "Secondary battery cells requiring specialized chemical extraction and dry storage.",
-      safetyTip: "Keep damaged batteries isolated and dry. Do not puncture or expose to heat.",
-    };
-  }
+Return ONLY a JSON object with these exact keys — no markdown, no extra text:
 
-  // 4. Circuit Boards / PCBs
-  if (name.includes("pcb") || name.includes("board") || name.includes("motherboard") || name.includes("ram") || name.includes("chip") || name.includes("circuit")) {
-    return {
-      object: "Printed Circuit Board (PCB)",
-      category: "High-Grade Electronics (PCBs)",
-      material: "pcb",
-      confidence: 95,
-      condition: "Sorted",
-      components: ["FR-4 fiberglass board", "Integrated Circuits (ICs)", "Copper traces & gold pins", "SMD Capacitors"],
-      suggestedWeight: 0.5,
-      explanation: "Populated electronic circuit board containing recoverable precious metals and semiconductor chips.",
-      safetyTip: "Avoid breaking or heating circuit boards without professional fume capture systems.",
-    };
-  }
-
-  // 5. Displays and Panels
-  if (name.includes("panel") || name.includes("screen") || name.includes("monitor") || name.includes("lcd") || name.includes("display") || name.includes("tv")) {
-    return {
-      object: "Flat Screen / Display Panel",
-      category: "Screens & Monitors",
-      material: "panels",
-      confidence: 88,
-      condition: "Sorted",
-      components: ["Glass substrate", "Optical diffuser sheets", "LED/CCFL backlight unit", "Bezel frame"],
-      suggestedWeight: 3.2,
-      explanation: "Display panel containing glass layers, optical diffusers, and electronic backlight drivers.",
-      safetyTip: "Handle glass panels with heavy-duty cut-resistant gloves to prevent injury.",
-    };
-  }
-
-  // 6. Motors and Coils
-  if (name.includes("motor") || name.includes("compressor") || name.includes("magnet") || name.includes("rotor") || name.includes("stator") || name.includes("pump")) {
-    return {
-      object: "Electric Motor / Transformer",
-      category: "Motors & Inductors",
-      material: "motors",
-      confidence: 89,
-      condition: "Sorted",
-      components: ["Copper coil windings", "Laminated steel core", "Neodymium magnets", "Steel housing"],
-      suggestedWeight: 2.5,
-      explanation: "Heavy-duty electric motor unit with dense copper coil windings and iron-steel core.",
-      safetyTip: "Do not attempt to pry open sealed motor casings without proper mechanical tools.",
-    };
-  }
-
-  // 7. Mobile Phone Chargers, Power Adapters, and Plugs
-  if (
-    name.includes("charger") ||
-    name.includes("adapter") ||
-    name.includes("plug") ||
-    name.includes("brick") ||
-    name.includes("power") ||
-    name.includes("smps") ||
-    name.includes("samsung") ||
-    name.includes("fast") ||
-    name.includes("mobile") ||
-    name.includes("phone")
-  ) {
-    return {
-      object: "Mobile Phone Charger / Power Adapter",
-      category: "Small IT Equipment / Chargers & Adapters",
-      material: "plastics",
-      confidence: 93,
-      condition: "Sorted",
-      components: [
-        "Flame-retardant Polycarbonate/ABS casing",
-        "Internal SMPS transformer & circuit board",
-        "USB charging cable & copper wiring",
-        "Nickel-plated AC brass plug pins",
-      ],
-      suggestedWeight: 0.10,
-      explanation: "Mobile wall charger (SMPS power adapter) with USB charging lead. Contains recyclable high-grade plastics, transformer coils, and internal PCB.",
-      safetyTip: "Do not break or dismantle sealed power adapters; internal capacitors can retain charge.",
-    };
-  }
-
-  // 8. General plastics / IT peripherals (keyboard, remote, etc.)
-  if (name.includes("plastic") || name.includes("keyboard") || name.includes("remote")) {
-    return {
-      object: name.includes("keyboard") ? "Computer Keyboard" : name.includes("remote") ? "Remote Control" : "Small IT Equipment / Mixed E-Plastics",
-      category: "Computer Peripherals / Small IT Equipment",
-      material: "plastics",
-      confidence: 90,
-      condition: "Sorted",
-      components: ["ABS plastic housing", "Internal contact circuitry", "Rubber keycaps / membranes", "Connecting wiring"],
-      suggestedWeight: 0.5,
-      explanation: "Small IT electronic equipment composed of high-impact recyclable plastic housing and internal electronic traces.",
-      safetyTip: "Sort plastics separately from hazardous components; never incinerate plastic casings.",
-    };
-  }
-
-  // 9. Generic phone camera or WhatsApp image uploads (when GEMINI_API_KEY is not configured)
-  return {
-    object: "Mobile Phone Charger / Power Adapter",
-    category: "Small IT Equipment / Chargers & Adapters",
-    material: "plastics",
-    confidence: 92,
-    condition: "Sorted",
-    components: [
-      "Flame-retardant Polycarbonate/ABS casing",
-      "Internal SMPS transformer & circuit board",
-      "USB charging cable & copper wiring",
-      "Nickel-plated AC brass plug pins",
-    ],
-    suggestedWeight: 0.10,
-    explanation: "Identified mobile wall charger / adapter with USB cable. Contains recyclable polymer housing, copper transformer coils, and internal PCB.",
-    safetyTip: "Do not break or dismantle sealed power adapter units without safety equipment.",
-  };
+{
+  "object": "The specific item name you can clearly see (e.g. Computer Mouse, USB Keyboard, Li-ion Battery Pack, Printed Circuit Board, LCD Monitor, Electric Motor, Mobile Phone Charger, Smartphone, Laptop, Copper Wire Bundle). Be specific and accurate.",
+  "category": "Formal e-waste category. Choose ONE from: Computer Peripherals / Small IT Equipment | Cables & Wiring | Portable Batteries / Cells | Printed Circuit Boards (PCBs) | Screens & Monitors | Motors & Inductors | Chargers & Power Adapters | Mobile Devices | Large Household Appliances | Small Household Appliances | IT & Telecommunications Equipment | Consumer Electronics",
+  "material": "Exactly ONE of: cables | batteries | pcb | panels | motors | plastics. Rules: plastics for IT peripherals/phones/chargers/keyboards/mice. cables for wire bundles. batteries for any battery type. pcb for circuit boards. panels for screens/displays. motors for motors/compressors.",
+  "confidence": "Integer 50-99. Lower (50-65) if image is blurry, dark, or ambiguous. Higher (75-99) if the item is clearly visible.",
+  "condition": "Exactly ONE of: Sorted | Mixed | Damaged",
+  "components": ["Array of 2 to 5 specific physical materials or sub-components you can see"],
+  "suggestedWeight": 0.12,
+  "explanation": "One or two sentences: what you see and why it has recycling value. Max 250 chars.",
+  "safetyTip": "Practical safety advice specific to this item. Max 150 chars."
 }
 
-export async function POST(request: Request) {
+CRITICAL:
+- Base your answer on what you see in the image pixels, not any text.
+- Computer mouse → object: Computer Mouse, category: Computer Peripherals, material: plastics.
+- Mobile phone charger → object: Mobile Phone Charger, material: plastics.
+- Battery pack → material: batteries.
+- Copper wires → material: cables.
+- Circuit board → material: pcb.
+- LCD/LED screen → material: panels.
+- Electric motor → material: motors.`;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function json(data: unknown, status = 200): Response {
+  return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+function toBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes).toString("base64");
+  }
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function extractJson(raw: string): Record<string, unknown> {
+  const stripped = raw
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const start = stripped.indexOf("{");
+  const end = stripped.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("AI returned invalid JSON");
+  return JSON.parse(stripped.slice(start, end + 1)) as Record<string, unknown>;
+}
+
+// ─── Route Handler ─────────────────────────────────────────────────────────────
+
+export async function POST(request: Request): Promise<Response> {
+  // 1. Parse form
+  let form: FormData;
   try {
-    const form = await request.formData();
-    const image = form.get("image");
-    if (!(image instanceof File)) {
-      console.warn("[/api/scan] Bad request: no image file provided");
-      return json({ error: "Choose a scrap photo" }, 400);
-    }
-    if (!image.type.startsWith("image/")) {
-      console.warn("[/api/scan] Bad request: invalid file type", image.type);
-      return json({ error: "Only image files are supported" }, 400);
-    }
-    if (image.size > 10 * 1024 * 1024) {
-      console.warn("[/api/scan] Bad request: file too large", image.size);
-      return json({ error: "Image must be smaller than 10 MB" }, 400);
-    }
+    form = await request.formData();
+  } catch (err) {
+    console.error("[/api/scan] Failed to parse form data:", err);
+    return json({ error: "Invalid request format" }, 400);
+  }
 
-    const runtime = await getScanEnv();
-    const bytes = new Uint8Array(await image.arrayBuffer());
-    const imageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${image.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+  // 2. Validate image
+  const image = form.get("image");
+  if (!(image instanceof File)) {
+    return json({ error: "Please select a scrap photo to analyse" }, 400);
+  }
+  if (!image.type.startsWith("image/")) {
+    console.warn("[/api/scan] Invalid file type:", image.type);
+    return json({ error: "Only image files (JPG, PNG, WEBP) are supported" }, 400);
+  }
+  if (image.size > 10 * 1024 * 1024) {
+    console.warn("[/api/scan] File too large:", image.size);
+    return json({ error: "Image must be smaller than 10 MB" }, 400);
+  }
+  if (image.size < 100) {
+    return json({ error: "The uploaded image appears to be empty or corrupted" }, 400);
+  }
 
-    if (runtime.BUCKET) {
-      try {
-        await runtime.BUCKET.put(imageKey, bytes, { httpMetadata: { contentType: image.type } });
-      } catch (err) {
-        console.warn("[/api/scan] R2 upload skipped or failed:", err);
-      }
-    }
+  // 3. Read bytes
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await image.arrayBuffer());
+  } catch (err) {
+    console.error("[/api/scan] Failed to read image bytes:", err);
+    return json({ error: "Unable to read the uploaded image" }, 400);
+  }
 
-    // If Gemini API Key is available, use real Gemini Vision inference
-    if (runtime.GEMINI_API_KEY) {
-      try {
-        const model = runtime.GEMINI_MODEL || "gemini-2.5-flash";
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(runtime.GEMINI_API_KEY)}`;
-        const prompt = `You are an expert AI vision classifier for Indian e-waste recycling under CPCB/EPR norms and JNARDDC standards.
-Analyze the provided image of e-waste / scrap item.
-Return JSON ONLY with these exact keys:
-- "object": Identified item name (e.g. "Computer Mouse", "Copper Wires", "Li-ion Battery", "Printed Circuit Board", "CRT/LCD Monitor", "Electric Motor").
-- "category": Formal e-waste category (e.g. "Computer Peripherals / Small IT Equipment", "Cables & Wiring", "Portable Batteries / Cells", "Printed Circuit Boards (PCBs)", "Screens & Monitors", "Motors & Inductors").
-- "material": Exactly ONE of: "cables", "batteries", "pcb", "panels", "motors", "plastics". For IT peripherals like computer mice, keyboards, and remote controls where plastic housing predominates alongside small PCB/wires, use "plastics".
-- "confidence": Integer 50 to 99.
-- "condition": Exactly ONE of: "Sorted", "Mixed", "Damaged".
-- "components": Array of 2 to 5 detected materials or components (e.g. ["Rigid plastic casing (ABS)", "Internal circuit board (PCB)", "Optical sensor & switches", "Copper cable / USB wiring"]).
-- "suggestedWeight": Approximate weight in kilograms as a decimal number (e.g. 0.15 for mouse, 1.5 for motor, 2.0 for cables).
-- "explanation": Brief assessment of the detected materials and suitability for recycling (max 200 characters).
-- "safetyTip": Recommended safety precaution for handling/storing this scrap (max 150 characters).
-Do not return Markdown backticks or any other text outside JSON.`;
+  // 4. Generate storage key
+  const safeFileName = image.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const imageKey = `uploads/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${safeFileName}`;
 
-        const aiResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: prompt },
-                  { inline_data: { mime_type: image.type, data: toBase64(bytes) } },
-                ],
-              },
+  // 5. Check API key
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    console.error(
+      "[/api/scan] GEMINI_API_KEY is not set. Add it to .env.local (local) or Vercel Environment Variables (production)."
+    );
+    return json(
+      { error: "The AI scanner is not configured. Please contact the administrator.", retryable: false },
+      503
+    );
+  }
+
+  const model = getGeminiModel();
+  console.log(`[/api/scan] Calling ${model} | size: ${bytes.length}b | type: ${image.type}`);
+
+  // 6. Call Gemini Vision
+  try {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+    const aiResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: VISION_PROMPT },
+              { inline_data: { mime_type: image.type, data: toBase64(bytes) } },
             ],
-            generationConfig: { responseMimeType: "application/json", temperature: 0.1 },
-          }),
-        });
+          },
+        ],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+      }),
+    });
 
-        if (aiResponse.ok) {
-          const payload = (await aiResponse.json()) as {
-            candidates?: { content?: { parts?: { text?: string }[] } }[];
-          };
-          const rawText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-          const parsed = extractJson(rawText);
-          const parsedMat = String(parsed.material ?? "").toLowerCase();
-          const material = allowed.has(parsedMat) ? parsedMat : "plastics";
-
-          return json({
-            object: String(parsed.object || "Identified E-Waste Item"),
-            category: String(parsed.category || "Computer Peripherals / Small IT Equipment"),
-            material,
-            confidence: Math.max(50, Math.min(99, Math.round(Number(parsed.confidence) || 88))),
-            condition: ["Sorted", "Mixed", "Damaged"].includes(String(parsed.condition))
-              ? parsed.condition
-              : "Sorted",
-            components: Array.isArray(parsed.components)
-              ? parsed.components.map(String)
-              : ["Plastic casing", "Internal electronics"],
-            suggestedWeight: Number(parsed.suggestedWeight) > 0 ? Number(parsed.suggestedWeight) : 0.5,
-            explanation: String(parsed.explanation || "Material category detected from the uploaded image").slice(0, 300),
-            safetyTip: String(parsed.safetyTip || "Handle with gloves and do not burn or dismantle without safety equipment").slice(0, 300),
-            imageKey,
-          });
-        } else {
-          console.warn("[/api/scan] Gemini API call status:", aiResponse.status);
-        }
-      } catch (geminiError) {
-        console.warn("[/api/scan] Gemini vision inference failed, applying built-in classifier:", geminiError);
-      }
+    if (!aiResponse.ok) {
+      const errBody = await aiResponse.text().catch(() => "");
+      console.error(`[/api/scan] Gemini HTTP ${aiResponse.status}:`, errBody.slice(0, 500));
+      return json(
+        { error: "Unable to analyse this image right now. Please try again.", retryable: true },
+        500
+      );
     }
 
-    // Built-in intelligent classifier for Antigravity runtime / local testing
-    const kbResult = classifyByKnowledgeBase(image.name);
+    const payload = (await aiResponse.json()) as {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+      error?: { message?: string };
+    };
+
+    if (payload.error) {
+      console.error("[/api/scan] Gemini API error:", payload.error.message);
+      return json(
+        { error: "Unable to analyse this image right now. Please try again.", retryable: true },
+        500
+      );
+    }
+
+    const rawText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!rawText) {
+      console.error("[/api/scan] Gemini returned empty response");
+      return json(
+        { error: "The AI returned no result. Please try again with a clearer photo.", retryable: true },
+        500
+      );
+    }
+
+    // 7. Parse and validate AI response
+    const parsed = extractJson(rawText);
+
+    const object = String(parsed.object || "").trim();
+    if (!object) {
+      console.error("[/api/scan] AI did not identify an object. Raw:", rawText.slice(0, 200));
+      return json(
+        { error: "AI could not identify an object in this image. Please try a clearer photo.", retryable: true },
+        422
+      );
+    }
+
+    const category = String(parsed.category || "Small IT Equipment").trim();
+    const rawMat = String(parsed.material ?? "").toLowerCase().trim();
+    const material = allowed.has(rawMat) ? rawMat : "plastics";
+    const rawConf = Number(parsed.confidence);
+    const confidence = Number.isFinite(rawConf) ? Math.max(50, Math.min(99, Math.round(rawConf))) : 60;
+    const rawCond = String(parsed.condition ?? "");
+    const condition = ["Sorted", "Mixed", "Damaged"].includes(rawCond) ? rawCond : "Sorted";
+    const components = Array.isArray(parsed.components)
+      ? parsed.components.map(String).slice(0, 5)
+      : ["Electronic components", "Plastic housing"];
+    const rawWeight = Number(parsed.suggestedWeight);
+    const suggestedWeight = Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 0.3;
+    const explanation = String(parsed.explanation || "E-waste item identified from image.").slice(0, 300);
+    const safetyTip = String(
+      parsed.safetyTip || "Handle with gloves. Do not burn or dismantle without safety equipment."
+    ).slice(0, 200);
+
+    const lowConfidence = confidence < 65;
+
+    console.log(`[/api/scan] Result: "${object}" | ${category} | ${confidence}% | lowConf:${lowConfidence}`);
+
     return json({
-      ...kbResult,
+      object,
+      category,
+      material,
+      confidence,
+      condition,
+      components,
+      suggestedWeight,
+      explanation,
+      safetyTip,
       imageKey,
+      lowConfidence,
     });
-  } catch (error) {
-    console.error("[/api/scan] Scan failure:", error);
-    return json({ error: error instanceof Error ? error.message : "Image scan failed" }, 400);
+  } catch (err) {
+    console.error("[/api/scan] Unexpected error during AI scan:", err);
+    return json(
+      { error: "Unable to analyse this image right now. Please try again.", retryable: true },
+      500
+    );
   }
 }
 
-export async function GET(request: Request) {
-  try {
-    const runtime = await getScanEnv();
-    const key = new URL(request.url).searchParams.get("key") ?? "";
-    if (!runtime.BUCKET || !key.startsWith("uploads/")) return new Response("Not found", { status: 404 });
-    const object = await runtime.BUCKET.get(key);
-    if (!object) return new Response("Not found", { status: 404 });
-    return new Response(object.body, {
-      headers: {
-        "Content-Type": object.httpMetadata?.contentType || "application/octet-stream",
-        "Cache-Control": "public, max-age=86400",
-      },
-    });
-  } catch (error) {
-    console.error("[/api/scan] GET error:", error);
-    return new Response("Error", { status: 500 });
-  }
+export async function GET(): Promise<Response> {
+  return json({ status: "AI scanner ready", model: getGeminiModel() });
 }
+
