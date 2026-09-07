@@ -130,16 +130,25 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 function extractJson(raw: string): Record<string, unknown> {
-  const stripped = raw
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```$/i, "")
-    .trim();
-  const start = stripped.indexOf("{");
-  const end = stripped.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("AI returned invalid JSON");
-  return JSON.parse(stripped.slice(start, end + 1)) as Record<string, unknown>;
+  const clean = raw.trim();
+  try {
+    return JSON.parse(clean) as Record<string, unknown>;
+  } catch {
+    const start = clean.indexOf("{");
+    const end = clean.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      const slice = clean.slice(start, end + 1);
+      try {
+        return JSON.parse(slice) as Record<string, unknown>;
+      } catch {
+        const fixed = slice.replace(/,\s*([\]}])/g, "$1");
+        return JSON.parse(fixed) as Record<string, unknown>;
+      }
+    }
+    throw new Error(`AI returned text without JSON: "${clean.slice(0, 120)}"`);
+  }
 }
+
 
 // ─── Route Handler ─────────────────────────────────────────────────────────────
 
@@ -214,7 +223,7 @@ export async function POST(request: Request): Promise<Response> {
             ],
           },
         ],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+        generationConfig: { responseMimeType: "application/json", temperature: 0.1, maxOutputTokens: 1024 },
       }),
     });
 
@@ -224,12 +233,12 @@ export async function POST(request: Request): Promise<Response> {
       return json(
         {
           error: "Unable to analyse this image right now. Please try again.",
-          debug: `HTTP ${aiResponse.status}: ${errBody.slice(0, 200)}`,
           retryable: true,
         },
         500
       );
     }
+
 
 
     const payload = (await aiResponse.json()) as {
@@ -305,11 +314,11 @@ export async function POST(request: Request): Promise<Response> {
     return json(
       {
         error: "Unable to analyse this image right now. Please try again.",
-        debug: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
         retryable: true,
       },
       500
     );
+
 
   }
 }
