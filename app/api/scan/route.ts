@@ -222,10 +222,15 @@ export async function POST(request: Request): Promise<Response> {
       const errBody = await aiResponse.text().catch(() => "");
       console.error(`[/api/scan] Gemini HTTP ${aiResponse.status}:`, errBody.slice(0, 500));
       return json(
-        { error: "Unable to analyse this image right now. Please try again.", retryable: true },
+        {
+          error: "Unable to analyse this image right now. Please try again.",
+          debug: `HTTP ${aiResponse.status}: ${errBody.slice(0, 200)}`,
+          retryable: true,
+        },
         500
       );
     }
+
 
     const payload = (await aiResponse.json()) as {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
@@ -298,9 +303,14 @@ export async function POST(request: Request): Promise<Response> {
   } catch (err) {
     console.error("[/api/scan] Unexpected error during AI scan:", err);
     return json(
-      { error: "Unable to analyse this image right now. Please try again.", retryable: true },
+      {
+        error: "Unable to analyse this image right now. Please try again.",
+        debug: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+        retryable: true,
+      },
       500
     );
+
   }
 }
 
