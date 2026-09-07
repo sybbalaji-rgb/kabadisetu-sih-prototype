@@ -245,9 +245,9 @@ export async function POST(request: Request) {
       console.warn("[/api/scan] Bad request: invalid file type", image.type);
       return json({ error: "Only image files are supported" }, 400);
     }
-    if (image.size > 5 * 1024 * 1024) {
+    if (image.size > 10 * 1024 * 1024) {
       console.warn("[/api/scan] Bad request: file too large", image.size);
-      return json({ error: "Image must be smaller than 5 MB" }, 400);
+      return json({ error: "Image must be smaller than 10 MB" }, 400);
     }
 
     const runtime = await getScanEnv();

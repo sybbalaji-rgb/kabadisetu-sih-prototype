@@ -1,11 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, AudioLines, BarChart3, Boxes, Camera, CheckCircle2,
   FileCheck2, Headphones, Languages, Landmark, Leaf, LockKeyhole,
   LogOut, MapPin, Mic2, PackageCheck, Recycle, RefreshCw, Scale, ShieldCheck,
   Sparkles, Star, Truck, UploadCloud, UserRound, UsersRound, WalletCards,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -240,9 +241,65 @@ function CollectorArea({ session, view, data, act, onView, onBanner }: { session
   return <div className="space-y-5"><section className="relative overflow-hidden rounded-[34px] bg-[#173d30] p-7 text-white sm:p-10"><div className="absolute -right-16 -top-20 size-64 rounded-full border-[42px] border-[#e9ff9d]/10" /><div className="relative"><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#e9ff9d]"><Leaf /> {t("collector_workspace")}</div><h2 className="mt-4 text-4xl font-black sm:text-5xl">{t("welcome")}, {session.displayName}</h2><p className="mt-3 max-w-2xl text-white/70">{t("collector_desc")}</p><Button size="lg" className="mt-6 h-12 rounded-xl bg-[#e9ff9d] text-[#173d30] hover:bg-[#dff28b]" onClick={() => onView("create")}><Camera /> {t("scan_new_scrap")}</Button></div></section><div className="grid gap-4 sm:grid-cols-3"><Metric icon={WalletCards} label={t("verified_earnings")} value={money(earnings)} /><Metric icon={Boxes} label={t("total_lots")} value={String(data.lots.length)} /><Metric icon={Truck} label={t("active_pickups")} value={String(data.lots.filter((lot) => lot.status === "scheduled").length)} /></div><section className="grid gap-4 lg:grid-cols-5"><Feature icon={Camera} title={t("ai_scanner_title")} text={t("ai_scanner_desc")} /><Feature icon={LockKeyhole} title={t("fairlock_title")} text={t("fairlock_desc")} /><Feature icon={UsersRound} title={t("cluster_title")} text={t("cluster_desc")} /><Feature icon={FileCheck2} title={t("passport_title")} text={t("passport_desc")} /><Feature icon={Landmark} title={t("oversight_title")} text={t("oversight_desc")} /></section>{data.lots.length === 0 && <Empty title={t("no_lots_title")} text={t("no_lots_desc")} />}</div>;
 }
 
+async function compressImageForUpload(file: File): Promise<File> {
+  if (typeof window === "undefined" || !file.type.startsWith("image/") || file.type.includes("svg") || file.type.includes("gif")) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => resolve(file);
+      img.onload = () => {
+        try {
+          const maxDim = 1600;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve(file);
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              if (!blob || (blob.size >= file.size && file.size < 4 * 1024 * 1024)) {
+                return resolve(file);
+              }
+              const safeName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+              const compressedFile = new File([blob], safeName, {
+                type: "image/jpeg",
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            },
+            "image/jpeg",
+            0.85
+          );
+        } catch {
+          resolve(file);
+        }
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function CreateLot({ session, prices, act, onDone, onBanner }: { session: Session; prices: Price[]; act: (action: string, values?: Record<string, unknown>) => Promise<Record<string, unknown>>; onDone: () => void; onBanner: (message: string) => void }) {
   const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [material, setMaterial] = useState<MaterialKey | "">("");
   const [condition, setCondition] = useState("Sorted");
   const [weight, setWeight] = useState("");
@@ -255,6 +312,35 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
   const [detectedComponents, setDetectedComponents] = useState<string[]>([]);
   const [suggestedWeight, setSuggestedWeight] = useState<number | null>(null);
   const [imageKey, setImageKey] = useState("");
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
+  const handleFileInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = event.target.files?.[0];
+    event.target.value = "";
+    if (!selected) return;
+
+    try {
+      const readyFile = await compressImageForUpload(selected);
+      void scan(readyFile);
+    } catch (err) {
+      console.error("[KabadiApp] Error processing photo:", err);
+      void scan(selected);
+    }
+  };
 
   const price = material ? prices.find((item) => item.material === material) : null;
   const factor = condition === "Sorted" ? 1 : condition === "Mixed" ? 0.9 : 0.8;
@@ -350,36 +436,85 @@ function CreateLot({ session, prices, act, onDone, onBanner }: { session: Sessio
       </div>
       <form onSubmit={submit} className="grid gap-5 xl:grid-cols-[1fr_0.9fr]">
         <section className="rounded-[30px] border border-[#d5ded0] bg-[#f9fbf7] p-6 shadow-sm">
-          <label
-            htmlFor="scrap-photo"
-            className="flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center"
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
+            className="group relative flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-[24px] border-2 border-dashed border-[#afc0aa] bg-[#edf2e9] p-6 text-center transition hover:border-[#33734b] hover:bg-[#e4ede0]"
           >
             {scanning ? (
-              <>
-                <RefreshCw className="size-10 animate-spin" />
-                <p className="mt-3 font-black">{t("scanner_analyzing")}</p>
-              </>
-            ) : file ? (
-              <>
-                <CheckCircle2 className="size-11 text-[#33734b]" />
-                <p className="mt-3 font-black">{file.name}</p>
-                <p className="mt-1 text-xs text-[#6c7a72]">{t("tap_to_replace")}</p>
-              </>
+              <div className="flex flex-col items-center justify-center py-6">
+                <RefreshCw className="size-11 animate-spin text-[#204e38]" />
+                <p className="mt-3 text-base font-black text-[#173d30]">{t("scanner_analyzing")}</p>
+                <p className="mt-1 text-xs text-[#52665b]">Analyzing item with AI...</p>
+              </div>
+            ) : previewUrl ? (
+              <div className="flex flex-col items-center justify-center py-2">
+                <div className="relative mb-3 max-h-48 overflow-hidden rounded-2xl border-2 border-[#33734b] shadow-md">
+                  <img
+                    src={previewUrl}
+                    alt={file?.name || "Scrap preview"}
+                    className="max-h-48 max-w-full object-contain"
+                  />
+                  <div className="absolute top-2 right-2 rounded-full bg-[#173d30]/90 p-1 text-[#e9ff9d] shadow-sm">
+                    <CheckCircle2 className="size-4" />
+                  </div>
+                </div>
+                <p className="max-w-xs truncate text-sm font-black text-[#173d30]">{file?.name}</p>
+                <p className="mt-1 text-xs font-semibold text-[#52665b]">{t("tap_to_replace")}</p>
+              </div>
             ) : (
-              <>
-                <UploadCloud className="size-11" />
-                <p className="mt-3 font-black">{t("scanner_upload")}</p>
-                <p className="mt-1 text-xs text-[#6c7a72]">{t("scanner_upload_sub")}</p>
-              </>
+              <div className="flex flex-col items-center justify-center py-4">
+                <div className="flex size-14 items-center justify-center rounded-full bg-white shadow-xs">
+                  <UploadCloud className="size-7 text-[#245339]" />
+                </div>
+                <p className="mt-3 text-base font-black text-[#173d30]">{t("scanner_upload")}</p>
+                <p className="mt-1 max-w-xs text-xs text-[#6c7a72]">{t("scanner_upload_sub")}</p>
+              </div>
             )}
-          </label>
-          <Input
-            id="scrap-photo"
-            className="sr-only"
+
+            {/* Quick Action Buttons for Mobile */}
+            <div className="mt-4 flex w-full max-w-xs flex-wrap items-center justify-center gap-2 border-t border-[#d8e3d4] pt-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  cameraInputRef.current?.click();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#173d30] px-4 py-2 text-xs font-bold text-[#e9ff9d] shadow-sm transition hover:bg-[#225741] active:scale-95"
+              >
+                <Camera className="size-3.5" />
+                <span>Camera</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-[#b8ccb5] bg-white px-4 py-2 text-xs font-bold text-[#173d30] shadow-2xs transition hover:bg-[#edf4eb] active:scale-95"
+              >
+                <ImageIcon className="size-3.5" />
+                <span>Gallery / Files</span>
+              </button>
+            </div>
+          </div>
+
+          <input
+            ref={cameraInputRef}
             type="file"
             accept="image/*"
             capture="environment"
-            onChange={(event) => event.target.files?.[0] && void scan(event.target.files[0])}
+            className="hidden"
+            onChange={handleFileInput}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileInput}
           />
 
           {explanation && (
