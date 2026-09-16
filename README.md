@@ -1,113 +1,131 @@
-# vinext-starter
+# KabadiSetu
+### Smart India Hackathon 2026 | Problem Statement ID: SIH26229
+**Kabadiwala Connect — Bringing the Informal Collector into the Formal Recycling Chain**
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Live Prototype: [https://kabadisetu-sih-prototype-nine.vercel.app/](https://kabadisetu-sih-prototype-nine.vercel.app/)
 
-## Prerequisites
+---
 
-- Node.js `>=22.13.0`
-- Linux with `flock`, `curl`, and GNU `timeout`
+## 🌟 Executive Overview
+**KabadiSetu** is an inclusive digital platform designed to formally integrate India's informal waste collectors (*kabadiwalas*) into the authorized e-waste and scrap recycling ecosystem. By combining multimodal edge AI vision, cryptographic price-locking (FairLock), cooperative logistics clustering, and digital material passports (DMP), KabadiSetu transforms informal scrap gathering into verified, auditable, and remunerative supply chains aligned with CPCB and JNARDDC standards.
 
-## Sites Lifecycle
+---
 
-The Sites lifecycle CLI runs the locked dependency install before returning this checkout. Edit the source under `app/`, then checkpoint when a coherent milestone is ready to inspect or share. The remote Sites builder runs `npm run build` against the pushed commit. Do not repeat install or build as a normal pre-checkpoint step.
+## 📁 Repository & Folder Architecture
 
-This starter does not use `wrangler.jsonc`.
-
-`install:ci` is intentionally a single, non-retrying `npm ci`. It refuses a concurrent install for the same project, consumes a matching image-seeded npm cache with `--prefer-offline` while retaining registry fallback for a missing cache object, otherwise downloads and verifies the complete vinext tarball recorded in `package-lock.json`, limits npm to one socket, and terminates a stalled install. `build` applies a short timeout. These helpers target Linux and use GNU `timeout`; they are not native macOS scripts.
-
-Scripts that need writable project-scoped home, npm, XDG, and temporary paths use `scripts/sites-env.sh`. The `dev` and `start` scripts honor the caller's runtime environment and keep Wrangler logs inside the checkout. The generated `.sites-runtime/` directory is disposable and ignored by Git.
-
-## Included Shape
-
-- edit site code under `app/`
-- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+KabadiSetu/
+│
+├── frontend/                     # Modular React/Vite Client
+│   ├── public/                   # Static branding, logo, and icons
+│   ├── src/
+│   │   ├── components/           # Reusable Atomic UI (Navbar, Sidebar, Button, Card, Modal, Loading)
+│   │   ├── pages/                # High-level Views (Collector, Recycler, Admin, Scanner, CreateLot)
+│   │   ├── features/             # Domain Feature Modules
+│   │   │   ├── auth/             # Multi-role authentication & session guards
+│   │   │   ├── scrapScanner/     # AI camera viewfinder & scrap image analysis
+│   │   │   ├── fairLock/         # Guaranteed pricing & 7-day rate lock protection
+│   │   │   ├── smartCluster/     # Neighborhood scrap logistics pooling
+│   │   │   ├── materialPassport/ # Traceable EPR passports with QR verification
+│   │   │   └── commandCenter/    # JNARDDC regulatory oversight & KYC portal
+│   │   ├── services/             # API & Authentication client integrations
+│   │   ├── utils/                # Styling and formatting utility helpers
+│   │   ├── App.jsx               # Main React application router
+│   │   └── main.jsx              # Client entrypoint
+│   ├── package.json              # Client dependencies
+│   └── vite.config.js            # Vite build & proxy configuration
+│
+├── backend/                      # Scalable FastAPI Microservice
+│   ├── app/
+│   │   ├── main.py               # FastAPI application entrypoint & middleware
+│   │   ├── config.py             # App settings, environment variables & demo keys
+│   │   ├── database.py           # SQLAlchemy database session & engine
+│   │   ├── models/               # Relational ORM models (user, scrap, recycler, transaction, passport)
+│   │   ├── schemas/              # Pydantic validation schemas
+│   │   ├── routes/               # API endpoints (auth, scrap, recycler, pickup, transaction)
+│   │   └── services/             # Business logic (ai_scanner, price_engine, matching, cluster_pickup)
+│   ├── requirements.txt          # Python dependencies
+│   ├── Dockerfile                # Containerized backend deployment
+│   └── .env.example              # Environment variables template
+│
+├── ai_model/                     # Dedicated AI & Computer Vision Module
+│   ├── scrap_classifier.py       # Standalone Python inference script (Gemini Vision + edge fallback)
+│   ├── dataset/                  # CPCB e-waste taxonomy and dataset guide
+│   ├── model/                    # Model architecture & MobileNet ONNX specifications
+│   └── README.md                 # AI vision documentation & benchmarks
+│
+├── database/                     # Standalone SQL Schemas & Migrations
+│   ├── schema.sql                # Complete ANSI SQL DDL schema (PostgreSQL / SQLite)
+│   ├── seed_data.sql             # Real-world JNARDDC price matrix & verified recyclers
+│   └── migrations/               # Versioned migration scripts
+│
+├── docs/                         # Comprehensive Hackathon Documentation
+│   ├── problem_statement.md      # SIH26229 problem definition & objectives
+│   ├── system_architecture.md    # End-to-end technical system architecture
+│   ├── api_documentation.md      # REST API specifications and contracts
+│   └── project_report.md         # Full project report and impact assessment
+│
+├── docker-compose.yml            # Multi-service container orchestration
+├── app/                          # Maintained Next.js App Router live deployment (Vercel-ready)
+├── components/                   # Shadcn / Tailwind UI component library
+└── package.json                  # Root monorepo & Next.js production build runner
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+---
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## 🚀 The 5 Core SIH Modules
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- In a Server Component, start sign-in with
-  `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper
-  module is server-only; do not import it into a Client Component.
-- Do not use `fetch`, XHR, a client-side router, or a framework link that can
-  prefetch the sign-in route. SIWC must start as a top-level navigation.
-- Never request the AuthAPI authorization endpoint directly. The dispatch-owned
-  `/signin-with-chatgpt` route must start the SIWC flow.
-- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+1. **AI Scrap Scanner:** Multimodal visual identification of e-waste using Google Gemini Vision API. Accurately maps physical photos into the 6 statutory CPCB categories (`cables`, `batteries`, `pcb`, `panels`, `motors`, `plastics`).
+2. **FairLock Price Protection:** Cryptographically guarantees agreed rates for a 7-day fulfillment window, eliminating exploitative on-site deductions.
+3. **Smart Cluster Pickup:** Aggregates neighborhood micro-lots (<20 kg) into consolidated bulk shipments (>100 kg) to slash transport emissions and unlock higher rates.
+4. **Digital Material Passport (DMP):** Supplies end-to-end traceability with tamper-evident audit logs (`EVT-XXXX`) and verification codes (`KBS-XXXX`) for formal EPR compliance.
+5. **JNARDDC Command Center:** Regulatory control panel enabling authorities to accredit recyclers, monitor scrap flows, and adjust statutory reference rates.
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+---
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## 🛠️ Quick Start & Running Instructions
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+### Option 1: Live Next.js Web App (Current Production)
+```bash
+# Install dependencies
+npm install
 
-## Diagnostic Commands
+# Run development server
+npm run dev
 
-- `npm run install:ci`: perform the one bounded lockfile install
-- `npm run dev`: start the Vite/Vinext development server
-- `npm run build`: build the deployable Sites artifact
-- `npm run start`: start the built Vinext application
-- `npm test`: build and verify the rendered development-preview metadata
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+# Build production bundle
+npm run build
+```
 
-Use build commands for targeted diagnosis after a remote failure, not as part of the normal checkpoint path.
+### Option 2: Run Full-Stack with Docker Compose
+```bash
+# Set your Gemini API key in .env
+export GEMINI_API_KEY="your_gemini_api_key_here"
 
-The timeout defaults can be overridden for a controlled canary with `SITES_INSTALL_TIMEOUT`, `SITES_INSTALL_KILL_AFTER`, `SITES_BUILD_TIMEOUT`, and `SITES_BUILD_KILL_AFTER`. A timeout fails the command; the helpers never retry an unchanged install or build.
+# Spin up backend, frontend, and database
+docker-compose up --build
+```
+- **Frontend:** `http://localhost:5173`
+- **Backend API Docs (Swagger):** `http://localhost:8000/docs`
 
-## Learn More
+### Option 3: Run Backend Independently
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Or `venv\Scripts\activate` on Windows
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+### Option 4: Run Frontend Independently
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### Option 5: Run AI Classifier Script Standalone
+```bash
+cd ai_model
+python scrap_classifier.py path/to/scrap_photo.jpg
+```
