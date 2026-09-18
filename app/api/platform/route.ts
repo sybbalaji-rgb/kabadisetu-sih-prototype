@@ -197,12 +197,10 @@ async function ensureD1Tables(db: D1Database) {
         email TEXT,
         address TEXT NOT NULL,
         city TEXT NOT NULL,
-        category TEXT NOT NULL,
-        weight REAL NOT NULL,
+        pin_code TEXT NOT NULL,
         pickup_date TEXT NOT NULL,
-        time_slot TEXT NOT NULL,
-        image_key TEXT,
-        notes TEXT,
+        pickup_time TEXT NOT NULL,
+        instructions TEXT,
         status TEXT DEFAULT 'pending' NOT NULL,
         created_at TEXT NOT NULL
       );
@@ -272,19 +270,17 @@ async function handlePostD1(db: D1Database, body: Record<string, unknown>) {
   }
 
   if (action === "schedulePublicPickup") {
-    const fullName = requiredText(body.fullName, "Full Name", 100);
+    const fullName = requiredText(body.fullName, "Name", 100);
     const mobile = requiredText(body.mobile, "Mobile Number", 20);
-    const address = requiredText(body.address, "Pickup Address", 200);
-    const city = requiredText(body.city, "City / Area", 100);
-    const category = requiredText(body.category, "E-Waste Category", 50);
-    const weight = Number(body.weight);
-    if (!Number.isFinite(weight) || weight <= 0) throw new Error("Enter a valid estimated weight");
+    const address = requiredText(body.address, "Address", 200);
+    const city = requiredText(body.city, "City", 100);
+    const pinCode = requiredText(body.pinCode, "Pin Code", 20);
     const pickupDate = requiredText(body.pickupDate, "Pickup Date", 50);
-    const timeSlot = requiredText(body.timeSlot, "Time Slot", 50);
+    const pickupTime = requiredText(body.pickupTime, "Pickup Time", 50);
     const requestId = genId("REQ");
     
-    await db.prepare(`INSERT INTO pickup_requests (id, full_name, mobile, email, address, city, category, weight, pickup_date, time_slot, image_key, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).bind(
-      requestId, fullName, mobile, body.email ? String(body.email).slice(0, 100) : null, address, city, category, weight, pickupDate, timeSlot, body.imageKey ? String(body.imageKey) : null, body.notes ? String(body.notes).slice(0, 500) : null, now
+    await db.prepare(`INSERT INTO pickup_requests (id, full_name, mobile, email, address, city, pin_code, pickup_date, pickup_time, instructions, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).bind(
+      requestId, fullName, mobile, body.email ? String(body.email).slice(0, 100) : null, address, city, pinCode, pickupDate, pickupTime, body.instructions ? String(body.instructions).slice(0, 1000) : null, now
     ).run();
     return jsonResponse({ ok: true, id: requestId });
   }
@@ -477,21 +473,19 @@ async function handlePostMem(body: Record<string, unknown>) {
   }
 
   if (action === "schedulePublicPickup") {
-    const fullName = requiredText(body.fullName, "Full Name", 100);
+    const fullName = requiredText(body.fullName, "Name", 100);
     const mobile = requiredText(body.mobile, "Mobile Number", 20);
-    const address = requiredText(body.address, "Pickup Address", 200);
-    const city = requiredText(body.city, "City / Area", 100);
-    const category = requiredText(body.category, "E-Waste Category", 50);
-    const weight = Number(body.weight);
-    if (!Number.isFinite(weight) || weight <= 0) throw new Error("Enter a valid estimated weight");
+    const address = requiredText(body.address, "Address", 200);
+    const city = requiredText(body.city, "City", 100);
+    const pinCode = requiredText(body.pinCode, "Pin Code", 20);
     const pickupDate = requiredText(body.pickupDate, "Pickup Date", 50);
-    const timeSlot = requiredText(body.timeSlot, "Time Slot", 50);
+    const pickupTime = requiredText(body.pickupTime, "Pickup Time", 50);
     const requestId = genId("REQ");
     
     mem.pickupRequests.push({
       id: requestId, full_name: fullName, mobile, email: body.email ? String(body.email).slice(0, 100) : null,
-      address, city, category, weight, pickup_date: pickupDate, time_slot: timeSlot,
-      image_key: body.imageKey ? String(body.imageKey) : null, notes: body.notes ? String(body.notes).slice(0, 500) : null,
+      address, city, pin_code: pinCode, pickup_date: pickupDate, pickup_time: pickupTime,
+      instructions: body.instructions ? String(body.instructions).slice(0, 1000) : null,
       status: "pending", created_at: now
     });
     return jsonResponse({ ok: true, id: requestId });

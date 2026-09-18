@@ -55,6 +55,21 @@ CREATE TABLE `passport_events` (
 	`created_at` text NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE `pickup_requests` (
+	`id` text PRIMARY KEY NOT NULL,
+	`full_name` text NOT NULL,
+	`mobile` text NOT NULL,
+	`email` text,
+	`address` text NOT NULL,
+	`city` text NOT NULL,
+	`pin_code` text NOT NULL,
+	`pickup_date` text NOT NULL,
+	`pickup_time` text NOT NULL,
+	`instructions` text,
+	`status` text DEFAULT 'pending' NOT NULL,
+	`created_at` text NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE `price_history` (
 	`id` text PRIMARY KEY NOT NULL,
 	`material` text NOT NULL,

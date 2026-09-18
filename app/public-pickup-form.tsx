@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, CheckCircle2, Truck, Loader2, Calendar } from "lucide-react";
-import { materials } from "./kabadi-data";
+import { X, Loader2 } from "lucide-react";
 
 export function PublicPickupForm({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -15,37 +14,24 @@ export function PublicPickupForm({ onClose }: { onClose: () => void }) {
 
   const [fullName, setFullName] = useState("");
   const [mobile, setMobile] = useState("");
-  const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [category, setCategory] = useState("");
-  const [weight, setWeight] = useState("");
+  const [city, setCity] = useState("Delhi");
+  const [pinCode, setPinCode] = useState("");
+  const [email, setEmail] = useState("");
   const [pickupDate, setPickupDate] = useState("");
-  const [timeSlot, setTimeSlot] = useState("");
-  const [notes, setNotes] = useState("");
+  const [pickupTime, setPickupTime] = useState("");
+  const [instructions, setInstructions] = useState("");
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
 
-    if (!fullName.trim() || !mobile.trim() || !address.trim() || !city.trim() || !category || !weight || !pickupDate || !timeSlot) {
+    if (!fullName.trim() || !mobile.trim() || !address.trim() || !city.trim() || !pinCode.trim() || !pickupDate || !pickupTime) {
       return setError("Please fill in all required fields.");
     }
     
     if (mobile.replace(/\D/g, "").length !== 10) {
       return setError("Please enter a valid 10-digit mobile number.");
-    }
-    
-    const numWeight = Number(weight);
-    if (!Number.isFinite(numWeight) || numWeight <= 0) {
-      return setError("Please enter a valid estimated weight.");
-    }
-
-    const selectedDate = new Date(pickupDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (selectedDate < today) {
-      return setError("Pickup date cannot be in the past.");
     }
 
     setLoading(true);
@@ -55,8 +41,8 @@ export function PublicPickupForm({ onClose }: { onClose: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "schedulePublicPickup",
-          fullName, mobile, email, address, city, category,
-          weight: numWeight, pickupDate, timeSlot, notes
+          fullName, mobile, email, address, city, pinCode,
+          pickupDate, pickupTime, instructions
         })
       });
       const data = (await result.json()) as Record<string, string>;
@@ -70,120 +56,110 @@ export function PublicPickupForm({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#17312a]/80 p-4 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[34px] bg-[#f9fbf7] shadow-2xl my-8">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-3xl overflow-hidden rounded-[24px] bg-[#f5f5f5] shadow-2xl my-8">
         
-        <div className="flex items-center justify-between border-b border-[#d1dccb] bg-[#173d30] px-6 py-5 text-white">
-          <div className="flex items-center gap-3">
-            <Truck className="size-6 text-[#e9ff9d]" />
-            <h2 className="text-xl font-black">Schedule a Pickup</h2>
-          </div>
-          <button onClick={onClose} className="rounded-full bg-white/10 p-2 hover:bg-white/20 transition">
-            <X className="size-5" />
+        {/* Header */}
+        <div className="relative p-6 sm:p-8 text-center border-b border-gray-200">
+          <button onClick={onClose} className="absolute right-6 top-6 rounded-full bg-black/5 p-2 hover:bg-black/10 transition">
+            <X className="size-5 text-black" />
           </button>
+          <h2 className="text-2xl sm:text-3xl font-bold text-[#173d30] mb-2">Please Fill form to Schedule a Scrap Pickup</h2>
+          <p className="text-sm font-semibold text-gray-700">For Any Query Contact us on +91-8920666322</p>
         </div>
 
         <div className="p-6 sm:p-8">
           {successId ? (
             <div className="flex flex-col items-center justify-center py-10 text-center">
-              <div className="mb-6 flex size-20 items-center justify-center rounded-full bg-[#e9ff9d] text-[#173d30]">
-                <CheckCircle2 className="size-10" />
-              </div>
-              <h3 className="mb-2 text-3xl font-black text-[#173d30]">Request Received!</h3>
-              <p className="mb-6 max-w-md text-[#465b51]">
-                Your pickup has been scheduled successfully. Our local collection partner will contact you shortly.
+              <h3 className="mb-4 text-3xl font-black text-[#173d30]">Success!</h3>
+              <p className="mb-6 max-w-md text-gray-700 font-medium">
+                Your pickup request has been received. Our team will contact you shortly.
               </p>
-              <div className="mb-8 rounded-2xl bg-[#edf2e9] p-4 border border-[#cbe1a9]">
-                <p className="text-sm font-semibold text-[#65736c] uppercase tracking-wider">Request ID</p>
-                <p className="text-xl font-black text-[#1c4735] tracking-widest">{successId}</p>
+              <div className="mb-8 rounded-xl bg-white p-6 border border-gray-200 shadow-sm">
+                <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Request ID</p>
+                <p className="text-2xl font-black text-[#173d30] tracking-widest">{successId}</p>
               </div>
-              <Button onClick={onClose} size="lg" className="h-12 rounded-xl bg-[#173d30] px-8 text-white">
-                Back to Home
+              <Button onClick={onClose} size="lg" className="h-12 rounded-lg bg-[#173d30] px-10 font-bold text-white hover:bg-[#204e3e]">
+                Close
               </Button>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-6">
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="Full Name *">
-                  <Input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Enter your full name" className="h-12 rounded-xl border-[#cbd5c5] bg-white" />
+              
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field label="Name *">
+                  <Input value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Enter your Name" className="h-12 rounded-lg border-gray-300 bg-white shadow-sm" />
                 </Field>
                 <Field label="Mobile Number *">
-                  <div className="flex gap-2">
-                    <div className="flex h-12 items-center justify-center rounded-xl border border-[#cbd5c5] bg-[#f0f4ed] px-3 font-semibold text-[#465b51]">+91</div>
-                    <Input value={mobile} onChange={e => setMobile(e.target.value.replace(/\D/g, ""))} maxLength={10} placeholder="10-digit number" className="h-12 flex-1 rounded-xl border-[#cbd5c5] bg-white" />
+                  <div className="flex h-12 rounded-lg border border-gray-300 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-center bg-gray-50 px-4 border-r border-gray-300 font-medium text-gray-700">
+                      🇮🇳 +91
+                    </div>
+                    <input 
+                      type="tel"
+                      value={mobile} 
+                      onChange={e => setMobile(e.target.value.replace(/\D/g, ""))} 
+                      maxLength={10} 
+                      placeholder="Enter your Mobile ..." 
+                      className="flex-1 px-3 outline-none text-sm"
+                    />
                   </div>
                 </Field>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="Email Address (Optional)">
-                  <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" className="h-12 rounded-xl border-[#cbd5c5] bg-white" />
-                </Field>
-                <Field label="City / Area *">
-                  <Input value={city} onChange={e => setCity(e.target.value)} placeholder="e.g. Bhosari, Pune" className="h-12 rounded-xl border-[#cbd5c5] bg-white" />
-                </Field>
-              </div>
-
-              <Field label="Pickup Address *">
-                <Textarea value={address} onChange={e => setAddress(e.target.value)} placeholder="Complete address with landmark" className="min-h-24 rounded-xl border-[#cbd5c5] bg-white p-3 resize-none" />
+              <Field label="Address *">
+                <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Enter your address" className="h-12 rounded-lg border-gray-300 bg-white shadow-sm" />
               </Field>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="E-Waste Category *">
-                  <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger className="h-12 rounded-xl border-[#cbd5c5] bg-white">
-                      <SelectValue placeholder="Select material type" />
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field label="Select City *">
+                  <Select value={city} onValueChange={setCity}>
+                    <SelectTrigger className="h-12 rounded-lg border-gray-300 bg-white shadow-sm">
+                      <SelectValue placeholder="Select City" />
                     </SelectTrigger>
                     <SelectContent>
-                      {Object.entries(materials).map(([key, meta]) => (
-                        <SelectItem key={key} value={key}>{meta.icon} {meta.label}</SelectItem>
-                      ))}
-                      <SelectItem value="other">📦 Other / Mixed Scrap</SelectItem>
+                      <SelectItem value="Delhi">Delhi</SelectItem>
+                      <SelectItem value="Gurugram">Gurugram</SelectItem>
+                      <SelectItem value="Noida">Noida</SelectItem>
+                      <SelectItem value="Faridabad">Faridabad</SelectItem>
+                      <SelectItem value="Ghaziabad">Ghaziabad</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="Estimated Weight (kg) *">
-                  <Input type="number" step="0.1" min="0" value={weight} onChange={e => setWeight(e.target.value)} placeholder="e.g. 5.5" className="h-12 rounded-xl border-[#cbd5c5] bg-white" />
+                <Field label="Pin Code *">
+                  <Input value={pinCode} onChange={e => setPinCode(e.target.value)} placeholder="Enter Pin Code" className="h-12 rounded-lg border-gray-300 bg-white shadow-sm" />
                 </Field>
               </div>
 
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field label="Preferred Date *">
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-[#65736c]" />
-                    <Input type="date" value={pickupDate} onChange={e => setPickupDate(e.target.value)} min={new Date().toISOString().split("T")[0]} className="h-12 pl-10 rounded-xl border-[#cbd5c5] bg-white" />
-                  </div>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field label="Email">
+                  <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your email" className="h-12 rounded-lg border-gray-300 bg-white shadow-sm" />
                 </Field>
-                <Field label="Preferred Time Slot *">
-                  <Select value={timeSlot} onValueChange={setTimeSlot}>
-                    <SelectTrigger className="h-12 rounded-xl border-[#cbd5c5] bg-white">
-                      <SelectValue placeholder="Select a time slot" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="9 AM - 12 PM">9 AM – 12 PM</SelectItem>
-                      <SelectItem value="12 PM - 3 PM">12 PM – 3 PM</SelectItem>
-                      <SelectItem value="3 PM - 6 PM">3 PM – 6 PM</SelectItem>
-                      <SelectItem value="6 PM - 8 PM">6 PM – 8 PM</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <Field label="Pickup date *">
+                  <Input type="date" value={pickupDate} onChange={e => setPickupDate(e.target.value)} min={new Date().toISOString().split("T")[0]} className="h-12 rounded-lg border-gray-300 bg-white shadow-sm" placeholder="Choose a date" />
                 </Field>
               </div>
 
-              <Field label="Additional Notes (Optional)">
-                <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any special instructions for the pickup vehicle?" className="h-12 rounded-xl border-[#cbd5c5] bg-white" />
+              <div className="grid gap-6 sm:grid-cols-2">
+                <Field label="Pickup Time *">
+                  <Input type="time" value={pickupTime} onChange={e => setPickupTime(e.target.value)} className="h-12 rounded-lg border-gray-300 bg-white shadow-sm" placeholder="HH:MM AM" />
+                </Field>
+              </div>
+
+              <Field label="Any Instructions">
+                <Textarea value={instructions} onChange={e => setInstructions(e.target.value)} className="min-h-[120px] rounded-lg border-gray-300 bg-white shadow-sm p-3 resize-y" />
               </Field>
 
-              {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</p>}
+              {error && <p className="text-sm font-semibold text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">{error}</p>}
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-[#d1dccb]">
-                <Button type="button" variant="outline" onClick={onClose} className="h-12 rounded-xl border-[#cbd5c5] bg-white px-6">
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={loading} className="h-12 rounded-xl bg-[#173d30] px-8 text-[#e9ff9d] hover:bg-[#204e3e]">
+              <div className="pt-4 flex flex-col items-center">
+                <Button type="submit" disabled={loading} className="w-full sm:w-64 h-12 rounded-lg bg-[#173d30] text-white font-bold text-lg shadow-md hover:bg-[#204e3e] transition-colors">
                   {loading ? <Loader2 className="mr-2 animate-spin size-5" /> : null}
-                  Schedule Pickup
+                  Submit
                 </Button>
+                <p className="mt-6 text-sm font-semibold text-gray-700">Facing Problems? Call us at 1800-889-1450</p>
               </div>
+
             </form>
           )}
         </div>
@@ -195,7 +171,7 @@ export function PublicPickupForm({ onClose }: { onClose: () => void }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-bold text-[#465b51]">{label}</span>
+      <span className="mb-2 block text-sm font-bold text-black">{label}</span>
       {children}
     </label>
   );
