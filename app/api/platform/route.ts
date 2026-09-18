@@ -24,6 +24,7 @@ const mem = {
   priceHistory: [] as MemPriceHistory[],
   clusterMembers: [] as { lot_id: string; cluster_id: string; joined_at: string }[],
   support: [] as MemSupport[],
+  pickupRequests: [] as Record<string, unknown>[],
   passportEvents: [] as Record<string, unknown>[],
   seeded: false,
 };
@@ -189,6 +190,22 @@ async function ensureD1Tables(db: D1Database) {
         status TEXT DEFAULT 'open' NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS pickup_requests (
+        id TEXT PRIMARY KEY NOT NULL,
+        full_name TEXT NOT NULL,
+        mobile TEXT NOT NULL,
+        email TEXT,
+        address TEXT NOT NULL,
+        city TEXT NOT NULL,
+        category TEXT NOT NULL,
+        weight REAL NOT NULL,
+        pickup_date TEXT NOT NULL,
+        time_slot TEXT NOT NULL,
+        image_key TEXT,
+        notes TEXT,
+        status TEXT DEFAULT 'pending' NOT NULL,
+        created_at TEXT NOT NULL
+      );
     `);
     d1TablesReady = true;
   } catch (err) {
@@ -253,6 +270,25 @@ async function handlePostD1(db: D1Database, body: Record<string, unknown>) {
     else { await db.prepare("INSERT INTO profiles (id, role, display_name, contact, authorization_id, service_area, verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(profileId, role, displayName, contact, authorizationId, serviceArea, role === "authority" ? 1 : 0, now).run(); }
     return jsonResponse({ profile: { id: profileId, role, displayName, contact, authorizationId, serviceArea, verified: Boolean(existing?.verified) || role === "authority" } });
   }
+
+  if (action === "schedulePublicPickup") {
+    const fullName = requiredText(body.fullName, "Full Name", 100);
+    const mobile = requiredText(body.mobile, "Mobile Number", 20);
+    const address = requiredText(body.address, "Pickup Address", 200);
+    const city = requiredText(body.city, "City / Area", 100);
+    const category = requiredText(body.category, "E-Waste Category", 50);
+    const weight = Number(body.weight);
+    if (!Number.isFinite(weight) || weight <= 0) throw new Error("Enter a valid estimated weight");
+    const pickupDate = requiredText(body.pickupDate, "Pickup Date", 50);
+    const timeSlot = requiredText(body.timeSlot, "Time Slot", 50);
+    const requestId = genId("REQ");
+    
+    await db.prepare(`INSERT INTO pickup_requests (id, full_name, mobile, email, address, city, category, weight, pickup_date, time_slot, image_key, notes, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).bind(
+      requestId, fullName, mobile, body.email ? String(body.email).slice(0, 100) : null, address, city, category, weight, pickupDate, timeSlot, body.imageKey ? String(body.imageKey) : null, body.notes ? String(body.notes).slice(0, 500) : null, now
+    ).run();
+    return jsonResponse({ ok: true, id: requestId });
+  }
+
 
   const profileId = requiredText(body.profileId, "Profile ID", 80);
   const profile = await db.prepare("SELECT * FROM profiles WHERE id = ?").bind(profileId).first<Record<string, unknown>>();
@@ -439,6 +475,28 @@ async function handlePostMem(body: Record<string, unknown>) {
     else { mem.profiles.push({ id: profileId, role, display_name: displayName, contact, authorization_id: authorizationId, service_area: serviceArea, verified: role === "authority" ? 1 : 0, created_at: now }); }
     return jsonResponse({ profile: { id: profileId, role, displayName, contact, authorizationId, serviceArea, verified: Boolean(existing?.verified) || role === "authority" } });
   }
+
+  if (action === "schedulePublicPickup") {
+    const fullName = requiredText(body.fullName, "Full Name", 100);
+    const mobile = requiredText(body.mobile, "Mobile Number", 20);
+    const address = requiredText(body.address, "Pickup Address", 200);
+    const city = requiredText(body.city, "City / Area", 100);
+    const category = requiredText(body.category, "E-Waste Category", 50);
+    const weight = Number(body.weight);
+    if (!Number.isFinite(weight) || weight <= 0) throw new Error("Enter a valid estimated weight");
+    const pickupDate = requiredText(body.pickupDate, "Pickup Date", 50);
+    const timeSlot = requiredText(body.timeSlot, "Time Slot", 50);
+    const requestId = genId("REQ");
+    
+    mem.pickupRequests.push({
+      id: requestId, full_name: fullName, mobile, email: body.email ? String(body.email).slice(0, 100) : null,
+      address, city, category, weight, pickup_date: pickupDate, time_slot: timeSlot,
+      image_key: body.imageKey ? String(body.imageKey) : null, notes: body.notes ? String(body.notes).slice(0, 500) : null,
+      status: "pending", created_at: now
+    });
+    return jsonResponse({ ok: true, id: requestId });
+  }
+
 
   const profileId = requiredText(body.profileId, "Profile ID", 80);
   const profile = mem.profiles.find((p) => p.id === profileId);

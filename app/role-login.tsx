@@ -11,6 +11,7 @@ import { Language, Role, voiceLocales } from "./kabadi-data";
 import { createClient } from "@supabase/supabase-js";
 import { useTranslation } from "react-i18next";
 import { changeLanguage, supportedLanguages } from "@/i18n/config";
+import { PublicPickupForm } from "./public-pickup-form";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder";
@@ -35,6 +36,7 @@ export function RoleLogin({
   const [serviceArea, setServiceArea] = useState("");
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [showPickupForm, setShowPickupForm] = useState(false);
 
   const [otpState, setOtpState] = useState<"idle" | "sending" | "sent" | "verifying">("idle");
   const [otp, setOtp] = useState("");
@@ -202,6 +204,11 @@ export function RoleLogin({
                 <div className="flex items-center gap-3 rounded-2xl bg-white/8 px-4 py-3"><ShieldCheck className="size-5 text-[#e9ff9d]" /> {t("fairlock_feature")}</div>
                 <div className="flex items-center gap-3 rounded-2xl bg-white/8 px-4 py-3"><Headphones className="size-5 text-[#e9ff9d]" /> {t("voice_feature")}</div>
               </div>
+              <div className="mt-8">
+                <Button onClick={() => setShowPickupForm(true)} size="lg" className="h-12 w-full sm:w-auto rounded-xl bg-[#e9ff9d] px-8 font-black text-[#173d30] hover:bg-[#dff28b] shadow-lg">
+                  Schedule a Pickup
+                </Button>
+              </div>
             </div>
           </div>
           
@@ -311,6 +318,7 @@ export function RoleLogin({
           </Tabs>
         </div>
       </section>
+      {showPickupForm && <PublicPickupForm onClose={() => setShowPickupForm(false)} />}
     </main>
   );
 }

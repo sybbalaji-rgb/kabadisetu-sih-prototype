@@ -87,3 +87,21 @@ export const supportRecords = sqliteTable("support_records", {
   status: text("status").notNull().default("open"),
   createdAt: text("created_at").notNull(),
 });
+
+export const pickupRequests = sqliteTable("pickup_requests", {
+  id: text("id").primaryKey(),
+  fullName: text("full_name").notNull(),
+  mobile: text("mobile").notNull(),
+  email: text("email"),
+  address: text("address").notNull(),
+  city: text("city").notNull(),
+  category: text("category").notNull(),
+  weight: real("weight").notNull(),
+  pickupDate: text("pickup_date").notNull(),
+  timeSlot: text("time_slot").notNull(),
+  imageKey: text("image_key"),
+  notes: text("notes"),
+  status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull(),
+});
+
