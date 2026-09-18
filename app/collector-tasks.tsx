@@ -29,7 +29,7 @@ export function CollectorTasks({
     <div className="mt-8">
       <h2 className="text-2xl font-black mb-4 flex items-center gap-2">
         <Navigation className="text-[#173d30]" />
-        Assigned Collection Tasks
+        {t("assigned_collection_tasks") || "Assigned Collection Tasks"}
       </h2>
       
       <div className="space-y-4">
@@ -45,11 +45,13 @@ export function CollectorTasks({
                   <p className="text-sm font-semibold text-gray-500">
                     {plan.pickupDate} • {plan.pickupTime}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">Plan ID: {plan.id} • Assigned by Recycler: {plan.recyclerId}</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {t("plan_id") || "Plan ID"}: {plan.id} • {t("assigned_by_recycler") || "Assigned by Recycler"}: {plan.recyclerId}
+                  </p>
                 </div>
                 <div className="mt-3 sm:mt-0 flex items-center gap-3">
                   <span className={`px-3 py-1 text-xs font-black rounded-full uppercase ${plan.status === 'completed' || plan.status === 'collected' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
-                    {plan.status}
+                    {t(plan.status) || plan.status}
                   </span>
                   {plan.status !== 'completed' && plan.status !== 'collected' && (
                     <select 
@@ -57,11 +59,11 @@ export function CollectorTasks({
                       value={plan.status}
                       onChange={(e) => updateStatus(plan.id, e.target.value)}
                     >
-                      <option value="assigned">Assigned</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="collected">Collected</option>
-                      <option value="completed">Completed</option>
+                      <option value="assigned">{t("assigned") || "Assigned"}</option>
+                      <option value="accepted">{t("accepted") || "Accepted"}</option>
+                      <option value="in_progress">{t("in_progress") || "In Progress"}</option>
+                      <option value="collected">{t("collected") || "Collected"}</option>
+                      <option value="completed">{t("completed") || "Completed"}</option>
                     </select>
                   )}
                 </div>
@@ -73,7 +75,7 @@ export function CollectorTasks({
                     <p className="font-bold text-gray-800">{req.fullName}</p>
                     <p className="text-xs text-gray-500 mt-1">{req.address}</p>
                     <p className="text-xs font-semibold text-[#173d30] mt-2">{req.mobile}</p>
-                    {req.instructions && <p className="text-xs text-amber-700 font-medium mt-1">Note: {req.instructions}</p>}
+                    {req.instructions && <p className="text-xs text-amber-700 font-medium mt-1">{t("note") || "Note"}: {req.instructions}</p>}
                   </div>
                 ))}
               </div>

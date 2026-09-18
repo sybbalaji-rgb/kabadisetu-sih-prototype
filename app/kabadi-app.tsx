@@ -1834,11 +1834,11 @@ function RecyclerArea({
       </div>
       {shown.length === 0 ? (
         <Empty
-          title="Nothing in this queue"
+          title={t("nothing_in_queue") || "Nothing in this queue"}
           text={
             view === "home"
-              ? "New collector lots will appear after sync."
-              : "Records move here as the handover progresses."
+              ? (t("new_collector_lots_sync") || "New collector lots will appear after sync.")
+              : (t("records_move_handover") || "Records move here as the handover progresses.")
           }
         />
       ) : (
