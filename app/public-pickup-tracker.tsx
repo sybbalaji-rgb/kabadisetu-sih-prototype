@@ -34,8 +34,8 @@ export function PublicPickupTracker({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] bg-[#f5f5f5] shadow-2xl my-8">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-[24px] bg-[#f5f5f5] shadow-2xl mt-8 mb-24">
         
         {/* Header */}
         <div className="relative p-6 text-center border-b border-gray-200">
