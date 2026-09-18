@@ -25,6 +25,7 @@ const mem = {
   clusterMembers: [] as { lot_id: string; cluster_id: string; joined_at: string }[],
   support: [] as MemSupport[],
   pickupRequests: [] as Record<string, unknown>[],
+  collectionPlans: [] as Record<string, unknown>[],
   passportEvents: [] as Record<string, unknown>[],
   seeded: false,
 };
@@ -201,7 +202,18 @@ async function ensureD1Tables(db: D1Database) {
         pickup_date TEXT NOT NULL,
         pickup_time TEXT NOT NULL,
         instructions TEXT,
+        plan_id TEXT,
         status TEXT DEFAULT 'pending' NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS collection_plans (
+        id TEXT PRIMARY KEY NOT NULL,
+        recycler_id TEXT NOT NULL,
+        collector_id TEXT NOT NULL,
+        area TEXT NOT NULL,
+        pickup_date TEXT NOT NULL,
+        pickup_time TEXT NOT NULL,
+        status TEXT DEFAULT 'assigned' NOT NULL,
         created_at TEXT NOT NULL
       );
     `);
@@ -235,13 +247,26 @@ async function handleGetD1(db: D1Database, profileId: string) {
   const historyRows = await db.prepare("SELECT * FROM price_history ORDER BY updated_at DESC LIMIT 60").all<Record<string, unknown>>();
   const clusterRows = await db.prepare(`SELECT cluster_id, material, location, COUNT(*) AS lot_count, ROUND(SUM(weight), 1) AS total_weight FROM lots WHERE cluster_id IS NOT NULL AND status != 'completed' GROUP BY cluster_id, material, location ORDER BY total_weight DESC`).all<Record<string, unknown>>();
   const supportRows = role === "authority" ? await db.prepare("SELECT * FROM support_records ORDER BY created_at DESC LIMIT 50").all<Record<string, unknown>>() : { results: [] as Record<string, unknown>[] };
+  
+  let pickupReqs = [] as Record<string, unknown>[];
+  let colPlans = [] as Record<string, unknown>[];
+  if (role === "recycler" || role === "collector") {
+    pickupReqs = (await db.prepare("SELECT * FROM pickup_requests ORDER BY created_at DESC").all<Record<string, unknown>>()).results ?? [];
+    colPlans = (await db.prepare("SELECT * FROM collection_plans ORDER BY created_at DESC").all<Record<string, unknown>>()).results ?? [];
+  }
+
+  const collectorRows = await db.prepare("SELECT id, display_name, contact FROM profiles WHERE role = 'collector'").all<Record<string, unknown>>();
+
   const metrics = await db.prepare(`SELECT COUNT(*) AS total_lots, COALESCE(SUM(weight), 0) AS total_kg, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed, SUM(CASE WHEN cluster_id IS NOT NULL AND status != 'completed' THEN 1 ELSE 0 END) AS clustered FROM lots`).first<Record<string, unknown>>();
   return jsonResponse({
     profile: { id: profile.id, role, displayName: profile.display_name, contact: profile.contact, authorizationId: profile.authorization_id, serviceArea: profile.service_area, verified: Boolean(profile.verified) },
     lots: (lotRows.results ?? []).map(asLot),
     recyclers: (recyclerRows.results ?? []).map((row) => ({ id: row.id, name: row.display_name, serviceArea: row.service_area, authorizationId: row.authorization_id, verified: Boolean(row.verified) })),
+    collectors: (collectorRows.results ?? []).map(row => ({ id: row.id, name: row.display_name, contact: row.contact })),
     prices: (priceRows.results ?? []).map((row) => ({ material: row.material, low: row.low_rate, high: row.high_rate, source: row.source, updatedAt: row.updated_at })),
     priceHistory: historyRows.results ?? [], clusters: clusterRows.results ?? [], support: supportRows.results ?? [], metrics,
+    pickupRequests: pickupReqs.map(r => ({ id: r.id, fullName: r.full_name, mobile: r.mobile, email: r.email, address: r.address, city: r.city, pinCode: r.pin_code, pickupDate: r.pickup_date, pickupTime: r.pickup_time, instructions: r.instructions, planId: r.plan_id, status: r.status, createdAt: r.created_at })),
+    collectionPlans: colPlans.map(p => ({ id: p.id, recyclerId: p.recycler_id, collectorId: p.collector_id, area: p.area, pickupDate: p.pickup_date, pickupTime: p.pickup_time, status: p.status, createdAt: p.created_at })),
   });
 }
 
@@ -408,6 +433,35 @@ async function handlePostD1(db: D1Database, body: Record<string, unknown>) {
     return jsonResponse({ lot: asLot(updated!) });
   }
 
+  if (action === "assignPickupRequests") {
+    if (role !== "recycler") throw new Error("Only recyclers can assign pickups");
+    if (!profile.verified) throw new Error("JNARDDC verification is required");
+    const collectorId = requiredText(body.collectorId, "Collector", 100);
+    const requestIds = Array.isArray(body.requestIds) ? body.requestIds.map(String) : [];
+    if (!requestIds.length) throw new Error("Select at least one pickup request");
+    const area = requiredText(body.area, "Area", 100);
+    const pickupDate = requiredText(body.pickupDate, "Pickup Date", 50);
+    const pickupTime = requiredText(body.pickupTime, "Pickup Time", 50);
+    
+    const planId = genId("PLN");
+    await db.prepare("INSERT INTO collection_plans (id, recycler_id, collector_id, area, pickup_date, pickup_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'assigned', ?)").bind(
+      planId, profileId, collectorId, area, pickupDate, pickupTime, now
+    ).run();
+    
+    for (const rid of requestIds) {
+      await db.prepare("UPDATE pickup_requests SET plan_id = ?, status = 'assigned' WHERE id = ?").bind(planId, rid).run();
+    }
+    return jsonResponse({ ok: true, planId });
+  }
+
+  if (action === "updateCollectionStatus") {
+    const planId = requiredText(body.planId, "Plan ID", 100);
+    const newStatus = requiredText(body.status, "Status", 50);
+    await db.prepare("UPDATE collection_plans SET status = ? WHERE id = ?").bind(newStatus, planId).run();
+    await db.prepare("UPDATE pickup_requests SET status = ? WHERE plan_id = ?").bind(newStatus, planId).run();
+    return jsonResponse({ ok: true });
+  }
+
   throw new Error("Unsupported action");
 }
 
@@ -424,6 +478,7 @@ function handleGetMem(profileId: string) {
   if (role === "collector") lots = lots.filter((l) => l.collector_id === profileId);
   else if (role === "recycler") lots = lots.filter((l) => l.status === "available" || l.recycler_id === profileId);
   const recyclers = mem.profiles.filter((p) => p.role === "recycler").map((p) => ({ id: p.id, name: p.display_name, serviceArea: p.service_area, authorizationId: p.authorization_id, verified: Boolean(p.verified) }));
+  const collectors = mem.profiles.filter((p) => p.role === "collector").map((p) => ({ id: p.id, name: p.display_name, contact: p.contact }));
   const prices = mem.prices.map((p) => ({ material: p.material, low: p.low_rate, high: p.high_rate, source: p.source, updatedAt: p.updated_at }));
   const clusters: Record<string, unknown>[] = [];
   const clusterMap = new Map<string, { material: string; location: string; lot_count: number; total_weight: number }>();
@@ -442,9 +497,11 @@ function handleGetMem(profileId: string) {
   const clustered = mem.lots.filter((l) => l.cluster_id && l.status !== "completed").length;
   return jsonResponse({
     profile: { id: profile.id, role, displayName: profile.display_name, contact: profile.contact, authorizationId: profile.authorization_id, serviceArea: profile.service_area, verified: Boolean(profile.verified) },
-    lots: lots.map(asLot), recyclers, prices, priceHistory: mem.priceHistory, clusters,
+    lots: lots.map(asLot), recyclers, collectors, prices, priceHistory: mem.priceHistory, clusters,
     support: role === "authority" ? mem.support : [],
     metrics: { total_lots: totalLots, total_kg: totalKg, completed, clustered },
+    pickupRequests: (role === "recycler" || role === "collector") ? mem.pickupRequests.map(r => ({ id: r.id, fullName: r.full_name, mobile: r.mobile, email: r.email, address: r.address, city: r.city, pinCode: r.pin_code, pickupDate: r.pickup_date, pickupTime: r.pickup_time, instructions: r.instructions, planId: r.plan_id, status: r.status, createdAt: r.created_at })) : [],
+    collectionPlans: (role === "recycler" || role === "collector") ? mem.collectionPlans.map(p => ({ id: p.id, recyclerId: p.recycler_id, collectorId: p.collector_id, area: p.area, pickupDate: p.pickup_date, pickupTime: p.pickup_time, status: p.status, createdAt: p.created_at })) : [],
   });
 }
 
@@ -601,6 +658,41 @@ async function handlePostMem(body: Record<string, unknown>) {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error("Choose a rating from 1 to 5");
     lot.recycler_rating = rating; lot.recycler_review = String(body.review ?? "").trim().slice(0, 500); lot.updated_at = now;
     return jsonResponse({ lot: asLot(lot) });
+  }
+
+  if (action === "assignPickupRequests") {
+    if (role !== "recycler") throw new Error("Only recyclers can assign pickups");
+    if (!profile.verified) throw new Error("JNARDDC verification is required");
+    const collectorId = requiredText(body.collectorId, "Collector", 100);
+    const requestIds = Array.isArray(body.requestIds) ? body.requestIds.map(String) : [];
+    if (!requestIds.length) throw new Error("Select at least one pickup request");
+    const area = requiredText(body.area, "Area", 100);
+    const pickupDate = requiredText(body.pickupDate, "Pickup Date", 50);
+    const pickupTime = requiredText(body.pickupTime, "Pickup Time", 50);
+    
+    const planId = genId("PLN");
+    mem.collectionPlans.push({
+      id: planId, recycler_id: profileId, collector_id: collectorId,
+      area, pickup_date: pickupDate, pickup_time: pickupTime,
+      status: "assigned", created_at: now
+    });
+    
+    for (const rid of requestIds) {
+      const req = mem.pickupRequests.find(r => r.id === rid);
+      if (req) { req.plan_id = planId; req.status = "assigned"; }
+    }
+    return jsonResponse({ ok: true, planId });
+  }
+
+  if (action === "updateCollectionStatus") {
+    const planId = requiredText(body.planId, "Plan ID", 100);
+    const newStatus = requiredText(body.status, "Status", 50);
+    const plan = mem.collectionPlans.find(p => p.id === planId);
+    if (plan) plan.status = newStatus;
+    for (const req of mem.pickupRequests) {
+      if (req.plan_id === planId) req.status = newStatus;
+    }
+    return jsonResponse({ ok: true });
   }
 
   throw new Error("Unsupported action");

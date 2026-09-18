@@ -99,7 +99,19 @@ export const pickupRequests = sqliteTable("pickup_requests", {
   pickupDate: text("pickup_date").notNull(),
   pickupTime: text("pickup_time").notNull(),
   instructions: text("instructions"),
+  planId: text("plan_id"),
   status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const collectionPlans = sqliteTable("collection_plans", {
+  id: text("id").primaryKey(),
+  recyclerId: text("recycler_id").notNull(),
+  collectorId: text("collector_id").notNull(),
+  area: text("area").notNull(),
+  pickupDate: text("pickup_date").notNull(),
+  pickupTime: text("pickup_time").notNull(),
+  status: text("status").notNull().default("assigned"),
   createdAt: text("created_at").notNull(),
 });
 
