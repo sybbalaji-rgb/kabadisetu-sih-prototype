@@ -12,6 +12,7 @@ import { createClient } from "@supabase/supabase-js";
 import { useTranslation } from "react-i18next";
 import { changeLanguage, supportedLanguages } from "@/i18n/config";
 import { PublicPickupForm } from "./public-pickup-form";
+import { PublicPickupTracker } from "./public-pickup-tracker";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder";
@@ -37,6 +38,7 @@ export function RoleLogin({
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [showPickupForm, setShowPickupForm] = useState(false);
+  const [showPickupTracker, setShowPickupTracker] = useState(false);
 
   const [otpState, setOtpState] = useState<"idle" | "sending" | "sent" | "verifying">("idle");
   const [otp, setOtp] = useState("");
@@ -204,9 +206,12 @@ export function RoleLogin({
                 <div className="flex items-center gap-3 rounded-2xl bg-white/8 px-4 py-3"><ShieldCheck className="size-5 text-[#e9ff9d]" /> {t("fairlock_feature")}</div>
                 <div className="flex items-center gap-3 rounded-2xl bg-white/8 px-4 py-3"><Headphones className="size-5 text-[#e9ff9d]" /> {t("voice_feature")}</div>
               </div>
-              <div className="mt-8">
+              <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
                 <Button onClick={() => setShowPickupForm(true)} size="lg" className="h-12 w-full sm:w-auto rounded-xl bg-[#e9ff9d] px-8 font-black text-[#173d30] hover:bg-[#dff28b] shadow-lg">
                   {t("schedule_pickup") || "Schedule a Pickup"}
+                </Button>
+                <Button onClick={() => setShowPickupTracker(true)} size="lg" variant="outline" className="h-12 w-full sm:w-auto rounded-xl border-white/20 bg-white/10 px-8 font-black text-white hover:bg-white/20">
+                  {t("track_pickup") || "Track My Pickup"}
                 </Button>
               </div>
             </div>
@@ -319,6 +324,7 @@ export function RoleLogin({
         </div>
       </section>
       {showPickupForm && <PublicPickupForm onClose={() => setShowPickupForm(false)} />}
+      {showPickupTracker && <PublicPickupTracker onClose={() => setShowPickupTracker(false)} />}
     </main>
   );
 }

@@ -310,6 +310,22 @@ async function handlePostD1(db: D1Database, body: Record<string, unknown>) {
     return jsonResponse({ ok: true, id: requestId });
   }
 
+  if (action === "lookupPublicPickup") {
+    const searchKey = requiredText(body.searchKey, "Mobile or Request ID", 50);
+    const results = await db.prepare(
+      "SELECT id, full_name, mobile, email, address, city, pin_code, pickup_date, pickup_time, instructions, plan_id, status, created_at FROM pickup_requests WHERE id = ? OR mobile = ? ORDER BY created_at DESC LIMIT 5"
+    ).bind(searchKey, searchKey).all<Record<string, unknown>>();
+    
+    return jsonResponse({
+      requests: (results.results ?? []).map(r => ({
+        id: r.id, fullName: r.full_name, mobile: r.mobile, email: r.email,
+        address: r.address, city: r.city, pinCode: r.pin_code,
+        pickupDate: r.pickup_date, pickupTime: r.pickup_time,
+        instructions: r.instructions, planId: r.plan_id, status: r.status, createdAt: r.created_at
+      }))
+    });
+  }
+
 
   const profileId = requiredText(body.profileId, "Profile ID", 80);
   const profile = await db.prepare("SELECT * FROM profiles WHERE id = ?").bind(profileId).first<Record<string, unknown>>();
@@ -546,6 +562,21 @@ async function handlePostMem(body: Record<string, unknown>) {
       status: "pending", created_at: now
     });
     return jsonResponse({ ok: true, id: requestId });
+  }
+
+  if (action === "lookupPublicPickup") {
+    const searchKey = requiredText(body.searchKey, "Mobile or Request ID", 50);
+    const results = mem.pickupRequests
+      .filter(r => r.id === searchKey || r.mobile === searchKey)
+      .sort((a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime())
+      .slice(0, 5)
+      .map(r => ({
+        id: r.id, fullName: r.full_name, mobile: r.mobile, email: r.email,
+        address: r.address, city: r.city, pinCode: r.pin_code,
+        pickupDate: r.pickup_date, pickupTime: r.pickup_time,
+        instructions: r.instructions, planId: r.plan_id, status: r.status, createdAt: r.created_at
+      }));
+    return jsonResponse({ requests: results });
   }
 
 

@@ -70,18 +70,64 @@ export function PublicPickupForm({ onClose }: { onClose: () => void }) {
 
         <div className="p-6 sm:p-8">
           {successId ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <h3 className="mb-4 text-3xl font-black text-[#173d30]">Success!</h3>
-              <p className="mb-6 max-w-md text-gray-700 font-medium">
-                Your pickup request has been received. Our team will contact you shortly.
-              </p>
-              <div className="mb-8 rounded-xl bg-white p-6 border border-gray-200 shadow-sm">
-                <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">Request ID</p>
-                <p className="text-2xl font-black text-[#173d30] tracking-widest">{successId}</p>
+            <div className="flex flex-col items-center justify-center py-4">
+              <div className="mb-4 text-center">
+                <h3 className="text-3xl font-black text-[#173d30]">Booking Confirmed!</h3>
+                <p className="mt-2 text-sm text-gray-600 font-medium max-w-md mx-auto">
+                  Your pickup request has been successfully scheduled. Please save your Request ID or take a screenshot of this receipt.
+                </p>
               </div>
-              <Button onClick={onClose} size="lg" className="h-12 rounded-lg bg-[#173d30] px-10 font-bold text-white hover:bg-[#204e3e]">
-                Close
-              </Button>
+              
+              <div className="w-full max-w-lg mb-8 rounded-2xl bg-white p-6 border border-gray-200 shadow-sm text-left">
+                <div className="border-b border-gray-100 pb-4 mb-4 flex justify-between items-center">
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Request ID</p>
+                    <p className="text-xl font-black text-[#173d30] tracking-wider">{successId}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Status</p>
+                    <span className="inline-block bg-amber-100 text-amber-800 text-xs font-black px-2 py-1 rounded-full uppercase">Pending</span>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                  <div>
+                    <p className="text-gray-500 font-semibold mb-1">Name</p>
+                    <p className="font-bold text-gray-800">{fullName}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold mb-1">Mobile Number</p>
+                    <p className="font-bold text-gray-800">{mobile}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-gray-500 font-semibold mb-1">Pickup Address</p>
+                    <p className="font-bold text-gray-800">{address}, {city} - {pinCode}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold mb-1">Scheduled Date</p>
+                    <p className="font-bold text-gray-800">{pickupDate}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold mb-1">Time Slot</p>
+                    <p className="font-bold text-gray-800">{pickupTime}</p>
+                  </div>
+                  {instructions && (
+                    <div className="col-span-2">
+                      <p className="text-gray-500 font-semibold mb-1">Instructions</p>
+                      <p className="font-bold text-gray-800 bg-gray-50 p-2 rounded-lg border border-gray-100">{instructions}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex gap-4">
+                <Button onClick={() => window.print()} variant="outline" size="lg" className="h-12 rounded-lg font-bold">
+                  Print Receipt
+                </Button>
+                <Button onClick={onClose} size="lg" className="h-12 rounded-lg bg-[#173d30] px-10 font-bold text-white hover:bg-[#204e3e]">
+                  Close & Return
+                </Button>
+              </div>
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-6">
