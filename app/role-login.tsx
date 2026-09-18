@@ -206,7 +206,7 @@ export function RoleLogin({
               </div>
               <div className="mt-8">
                 <Button onClick={() => setShowPickupForm(true)} size="lg" className="h-12 w-full sm:w-auto rounded-xl bg-[#e9ff9d] px-8 font-black text-[#173d30] hover:bg-[#dff28b] shadow-lg">
-                  Schedule a Pickup
+                  {t("schedule_pickup") || "Schedule a Pickup"}
                 </Button>
               </div>
             </div>
